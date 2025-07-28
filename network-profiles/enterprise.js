@@ -32,8 +32,8 @@ const ENTERPRISE_PROFILE = {
     
     // Sweet Spot Protection
     enableSweetSpotProtection: true,
-    peakDetectionThreshold: 100, // Mbps threshold for peak detection (realistic for enterprise)
-    sweetSpotProtectionDuration: 60000, // 60s protection period
+    peakDetectionThreshold: 150, // Mbps threshold for peak detection (higher to allow ULTRA upgrades)
+    sweetSpotProtectionDuration: 30000, // 30s protection period (shorter for adaptive upgrades)
     
     // Stall Protection
     minPartSpeed: 0.5, // MB/s - below this is considered slow for enterprise
