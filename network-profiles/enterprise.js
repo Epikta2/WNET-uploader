@@ -212,7 +212,7 @@ function createEnterpriseAdaptiveMonitor(strategy, performanceTracker, context) 
                             if (Date.now() - lastScaleDown > ENTERPRISE_PROFILE.scaleDownCooldown) {
                                 context.maxParallel = Math.max(context.maxParallel - ENTERPRISE_PROFILE.throttleAmount, ENTERPRISE_PROFILE.minParallel);
                                 console.warn(`⚠️ ENTERPRISE: Reducing parallel to ${context.maxParallel} due to sustained drop`);
-                                lastScaleDown = now;
+                                lastScaleDown = Date.now();
                                 peakPerformanceDetected = false;
                                 lockedPerformance = false;
                                 strongPerformanceSamples = 0;
