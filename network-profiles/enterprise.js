@@ -11,7 +11,7 @@ const ENTERPRISE_PROFILE = {
     parallel: 6, // Moderate parallel count for consistent throughput
     maxCap: 10, // Maximum parallel cap - aggressive scale-up
     minParallel: 4, // Minimum parallel for enterprise stability
-    targetSpeed: 500, // Target 50-150 Mbps range
+    targetSpeed: 100, // Target 75-120 Mbps range (ENTERPRISE tier)
     
     // Adaptive Ramp Logic
     rampUpThreshold: 4.0, // Conservative ramp-up for enterprise stability
