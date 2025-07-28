@@ -11,7 +11,7 @@ const DSL_PROFILE = {
     parallel: 2, // Very conservative parallel count
     maxCap: 2, // Maximum parallel cap - avoid retries & timeouts
     minParallel: 1, // Minimum parallel for DSL stability (fixed from 3)
-    targetSpeed: 25, // Target < 50 Mbps range
+    targetSpeed: 5, // Target <8 Mbps range (DSL tier)
     
     // Adaptive Ramp Logic
     rampUpThreshold: 1.5, // Conservative for 0-50 Mbps

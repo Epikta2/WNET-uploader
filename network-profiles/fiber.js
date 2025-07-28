@@ -11,7 +11,7 @@ const FIBER_PROFILE = {
     parallel: 8, // Moderate parallel count
     maxCap: 16, // Maximum parallel cap
     minParallel: 6, // Minimum parallel for stability
-    targetSpeed: 100, // Target 100-500 Mbps range
+    targetSpeed: 400, // Target 300-600 Mbps range (FIBER tier)
     
     // Adaptive Ramp Logic
     rampUpThreshold: 2.7, // Quicker scaling under stable conditions
