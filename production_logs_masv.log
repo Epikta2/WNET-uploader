@@ -1,0 +1,1 @@
+{"timestamp":"2025-05-23T13:32:46.126Z","level":"info","message":"MASV Agent started on port 3001","data":{"config":{"s3Integration":true,"webhook":true,"syncPath":"/masv-uploads/"}}}

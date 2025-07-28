@@ -1,0 +1,1597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WNET R2 Upload/Download Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .section {
+            border: 1px solid #ccc;
+            padding: 20px;
+            border-radius: 5px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #fileList {
+            margin-top: 10px;
+        }
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+    </style>
+</head>
+<body>
+    <h1>WNET R2 Upload/Download Test</h1>
+    
+    <div class="container">
+        <div class="section">
+            <h2>Upload to R2</h2>
+            <input type="file" id="fileInput" accept=".mp4,.mov,.avi,.mkv,.webm,.wmv,.mxf,video/*">
+            <button onclick="uploadFile()">Upload</button>
+            <div style="margin-top:5px; color:#555;">
+                <span>Upload Timer: </span><span id="uploadTimer">00:00:00</span>
+            </div>
+            <div style="margin-top:2px; color:#555;">
+                <span>Upload Speed: </span><span id="uploadSpeed">0.00 Mbps</span>
+            </div>
+            <div id="uploadProgressContainer" style="display:none; margin-top:10px;">
+                <progress id="uploadProgress" value="0" max="100" style="width:100%"></progress>
+                <span id="uploadProgressText"></span>
+            </div>
+            <div id="uploadFileSize" style="margin-top:2px; color:#555;"></div>
+            <div id="uploadETA" style="margin-top:5px; color:#555;"></div>
+            <!-- <div id="uploadPerformance" style="margin-top:15px; padding:10px; background:#f8f9fa; border-radius:5px; font-family:monospace; font-size:12px; display:none;">
+                <div style="font-weight:bold; margin-bottom:5px; color:#333;">📊 Performance Metrics:</div>
+                <div id="perfConnection"></div>
+                <div id="perfStrategy"></div>
+                <div id="perfProgress"></div>
+                <div id="perfParts" style="max-height:150px; overflow-y:auto; margin:5px 0;"></div>
+                <div id="perfSummary"></div>
+            </div> -->
+        </div>
+
+        <div class="section">
+            <h2>Download from R2</h2>
+            <button onclick="refreshFileList()">Refresh File List</button>
+            <div style="margin-top:5px; color:#555;">
+                <span>Download Timer: </span><span id="downloadTimer">00:00:00</span>
+            </div>
+            <div style="margin-top:2px; color:#555;">
+                <span>Download Speed: </span><span id="downloadSpeed">0.00 Mbps</span>
+            </div>
+            <div id="fileList"></div>
+            <div id="downloadProgressContainer" style="display:none; margin-top:10px;">
+                <progress id="downloadProgress" value="0" max="100" style="width:100%"></progress>
+                <span id="downloadProgressText"></span>
+                <div id="downloadSavingMsg" style="margin-top:5px; color:#555;"></div>
+                <div id="downloadETA" style="margin-top:5px; color:#555;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Replace these with your actual R2 credentials and bucket name
+        const R2_ACCOUNT_ID = 'YOUR_ACCOUNT_ID';
+        const R2_ACCESS_KEY_ID = 'YOUR_ACCESS_KEY_ID';
+        const R2_SECRET_ACCESS_KEY = 'YOUR_SECRET_ACCESS_KEY';
+        const R2_BUCKET_NAME = 'YOUR_BUCKET_NAME';
+
+        // Set your R2 Public Development URL base here
+        const R2_PUBLIC_URL_BASE = 'https://pub-2078a13599a74a339318b659bb618965.r2.dev'; // <-- Your actual public URL base
+
+        // Connection quality detection and chunk size configuration
+        const CHUNK_SIZES = {
+            slow: 100 * 1024 * 1024,    // 100MB chunks for slow connections (increased from 50MB)
+            medium: 200 * 1024 * 1024,  // 200MB chunks for medium connections (increased from 100MB)
+            fast: 500 * 1024 * 1024     // 500MB chunks for fast connections (increased from 250MB)
+        };
+
+        let currentChunkSize = CHUNK_SIZES.medium; // Default to medium
+        let uploadRetryCount = 0;
+        const MAX_RETRIES = 3;
+
+        let uploadTimerInterval = null;
+        let downloadTimerInterval = null;
+        let lastUploadTime = 0;
+        let lastDownloadTime = 0;
+        let lastUploadSize = 0;
+        let lastDownloadSize = 0;
+        let lastEtaUpdate = 0; // Track last ETA update time
+        let uploadStartTime = 0; // Track upload start time for avg speed
+
+        // Global Performance tracking object
+        const performanceTracker = {
+            startTime: 0,
+            partTimes: [],
+            parallelPeaks: 0,
+            retryCount: 0,
+            bytesPerSecond: [],
+            connectionUtilization: [],
+            
+            reset: function() {
+                this.startTime = Date.now();
+                this.partTimes = [];
+                this.parallelPeaks = 0;
+                this.retryCount = 0;
+                this.bytesPerSecond = [];
+                this.connectionUtilization = [];
+            },
+            
+            showPerformancePanel: function() {
+                const panel = document.getElementById('uploadPerformance');
+                if (panel) panel.style.display = 'block';
+            },
+            
+            updateConnection: function(info) {
+                const msg = `🔗 Connection: ${info.latency}ms latency, ${(info.bandwidth * 8).toFixed(2)} Mbps bandwidth (${info.type})`;
+                console.log(msg);
+                const elem = document.getElementById('perfConnection');
+                if (elem) elem.textContent = msg;
+            },
+            
+            updateStrategy: function(partSize, maxParallel, partCount) {
+                const msg = `📦 Strategy: ${partCount} parts × ${(partSize/1024/1024).toFixed(1)}MB, ${maxParallel} max parallel`;
+                console.log(msg);
+                const elem = document.getElementById('perfStrategy');
+                if (elem) elem.textContent = msg;
+            },
+            
+            logPartComplete: function(partNum, bytes, timeMs, parallel) {
+                const speed = (bytes / 1024 / 1024) / (timeMs / 1000);
+                const speedMbps = speed * 8; // Convert to Mbps
+                this.partTimes.push({ part: partNum, timeMs, speed, parallel });
+                this.parallelPeaks = Math.max(this.parallelPeaks, parallel);
+                
+                const msg = `✅ Part ${partNum}: ${(timeMs/1000).toFixed(1)}s, ${speedMbps.toFixed(2)} Mbps, ${parallel} active`;
+                console.log(msg);
+                
+                // Add to UI (show last 10 parts)
+                const elem = document.getElementById('perfParts');
+                if (elem) {
+                    const div = document.createElement('div');
+                    div.textContent = msg;
+                    div.style.color = speedMbps > 24 ? '#28a745' : speedMbps > 8 ? '#ffc107' : '#dc3545'; // Adjusted thresholds for Mbps
+                    elem.appendChild(div);
+                    
+                    // Keep only last 10 entries
+                    while (elem.children.length > 10) {
+                        elem.removeChild(elem.firstChild);
+                    }
+                    elem.scrollTop = elem.scrollHeight;
+                }
+            },
+            
+            logProgress: function(completed, total, totalBytes, elapsedMs) {
+                const progress = (completed / total * 100).toFixed(1);
+                const avgSpeed = (totalBytes / 1024 / 1024) / (elapsedMs / 1000);
+                const avgSpeedMbps = avgSpeed * 8; // Convert to Mbps
+                const eta = ((total - completed) * (elapsedMs / completed)) / 1000;
+                
+                const msg = `📊 Progress: ${progress}% (${completed}/${total} parts), ${avgSpeedMbps.toFixed(2)} Mbps avg, ETA: ${eta.toFixed(0)}s`;
+                console.log(msg);
+                
+                const elem = document.getElementById('perfProgress');
+                if (elem) elem.textContent = msg;
+            },
+            
+            logRetry: function(partNum, attempt, maxAttempts, delay, error) {
+                this.retryCount++;
+                const msg = `⚠️ Part ${partNum} retry ${attempt}/${maxAttempts} after ${delay}ms: ${error}`;
+                console.log(msg);
+                
+                const elem = document.getElementById('perfParts');
+                if (elem) {
+                    const div = document.createElement('div');
+                    div.textContent = msg;
+                    div.style.color = '#dc3545';
+                    elem.appendChild(div);
+                    elem.scrollTop = elem.scrollHeight;
+                }
+            },
+            
+            logFinalSummary: function(totalTime, partCount, partSize) {
+                if (this.partTimes.length === 0) return; // No parts completed
+                
+                const avgPartTime = this.partTimes.reduce((a, b) => a + b.timeMs, 0) / this.partTimes.length;
+                const fastestPart = Math.min(...this.partTimes.map(p => p.timeMs));
+                const slowestPart = Math.max(...this.partTimes.map(p => p.timeMs));
+                const avgPartSpeed = this.partTimes.reduce((a, b) => a + b.speed, 0) / this.partTimes.length;
+                const avgPartSpeedMbps = avgPartSpeed * 8; // Convert to Mbps
+                
+                const summary = [
+                    `🏁 UPLOAD COMPLETE - Performance Summary:`,
+                    `📈 Total time: ${(totalTime/1000).toFixed(1)}s`,
+                    `⚡ Peak parallel: ${this.parallelPeaks} connections`,
+                    `🔄 Retries: ${this.retryCount}`,
+                    `📊 Part timing: avg=${(avgPartTime/1000).toFixed(1)}s, fastest=${(fastestPart/1000).toFixed(1)}s, slowest=${(slowestPart/1000).toFixed(1)}s`,
+                    `🚀 Part speeds: avg=${avgPartSpeedMbps.toFixed(2)} Mbps per part`,
+                    `💡 ${this.parallelPeaks < 50 ? 'Browser/network limited connections' : 'Reached high parallelism'}`
+                ];
+                
+                // 🔧 RELIABILITY IMPROVEMENT - Add error and bandwidth info
+                if (this.errorLog && this.errorLog.length > 0) {
+                    const errorTypes = [...new Set(this.errorLog.map(e => e.error))];
+                    summary.push(`⚠️ Error types: ${errorTypes.join(', ')}`);
+                }
+                
+                summary.forEach(line => console.log(line));
+                
+                const elem = document.getElementById('perfSummary');
+                if (elem) {
+                    elem.innerHTML = summary.map(line => `<div style="margin:2px 0;">${line}</div>`).join('');
+                }
+            }
+        };
+
+        // Video file validation
+        function isValidVideoFile(file) {
+            // List of supported video formats
+            const supportedFormats = {
+                'video/mp4': '.mp4',
+                'video/quicktime': '.mov',
+                'video/x-msvideo': '.avi',
+                'video/x-matroska': '.mkv',
+                'video/webm': '.webm',
+                'video/x-ms-wmv': '.wmv',
+                'application/mxf': '.mxf'  // Added MXF format
+            };
+
+            // Check file extension
+            const extension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+            const validExtension = Object.values(supportedFormats).includes(extension);
+
+            // Check MIME type
+            const validMimeType = Object.keys(supportedFormats).includes(file.type);
+
+            if (!validExtension && !validMimeType) {
+                const supportedList = Object.values(supportedFormats).join(', ');
+                alert(`Unsupported video format. Please use one of these formats: ${supportedList}`);
+                return false;
+            }
+
+            return true;
+        }
+
+        function formatTime(ms) {
+            const totalSeconds = Math.floor(ms / 1000);
+            const hours = String(Math.floor(totalSeconds / 3600)).padStart(2, '0');
+            const minutes = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0');
+            const seconds = String(totalSeconds % 60).padStart(2, '0');
+            return `${hours}:${minutes}:${seconds}`;
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes >= 1024 * 1024 * 1024) {
+                return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+            } else if (bytes >= 1024 * 1024) {
+                return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+            } else if (bytes >= 1024) {
+                return (bytes / 1024).toFixed(2) + ' KB';
+            }
+            return bytes + ' bytes';
+        }
+
+        function getTimestampedFilename(filename) {
+            const dotIndex = filename.lastIndexOf('.');
+            const base = dotIndex !== -1 ? filename.substring(0, dotIndex) : filename;
+            const ext = dotIndex !== -1 ? filename.substring(dotIndex) : '';
+            const now = new Date();
+            const timestamp = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
+            return `${base}_${timestamp}${ext}`;
+        }
+
+        // Enhanced connection quality detection - considers both latency AND bandwidth
+        async function detectConnectionQuality() {
+            try {
+                // Step 1: Measure latency
+                const latencyStart = Date.now();
+                const pingResponse = await fetch('/api/ping');
+                const latency = Date.now() - latencyStart;
+
+                // Step 2: Try to measure bandwidth with small test upload (fallback if not supported)
+                let bandwidthMBps = 2.5; // Default assumption
+                // Disable POST test for now due to server limitations
+                console.log('Bandwidth test skipped, using latency-based estimation');
+                
+                // More realistic bandwidth estimates for common connection types
+                if (latency < 20) {
+                    bandwidthMBps = 12;  // Very fast local connections (boosted for your performance)
+                } else if (latency < 100) {
+                    bandwidthMBps = 10;   // Fast connections with some routing delay (boosted)
+                } else if (latency < 150) {
+                    bandwidthMBps = 9;   // Good connections like yours - BOOSTED to trigger optimal 14MB/120 strategy
+                } else if (latency < 200) {
+                    bandwidthMBps = 4;   // Moderate connections with geographic routing
+                } else {
+                    bandwidthMBps = 1;   // Slow/mobile connections
+                }
+
+                console.log(`Connection test: ${latency}ms latency, ${(bandwidthMBps * 8).toFixed(2)} Mbps bandwidth (${bandwidthMBps > 2.5 ? 'estimated' : 'measured'})`);
+
+                // Step 3: Classify connection type (optimized for high-performance connections)
+                let connectionType;
+                if (latency < 50 && bandwidthMBps >= 8) {
+                    connectionType = 'fast-unlimited'; // Low latency + high bandwidth
+                    currentChunkSize = CHUNK_SIZES.fast;
+                } else if (latency < 150 && bandwidthMBps >= 5) {
+                    connectionType = 'fast-limited'; // Your connection type - good latency + high bandwidth
+                    currentChunkSize = CHUNK_SIZES.medium;
+                } else if (latency >= 150 && bandwidthMBps > 3) {
+                    connectionType = 'slow-unlimited'; // High latency + decent bandwidth
+                    currentChunkSize = CHUNK_SIZES.medium;
+                } else {
+                    connectionType = 'slow-limited'; // High latency + limited bandwidth
+                    currentChunkSize = CHUNK_SIZES.slow;
+                }
+
+                return { type: connectionType, latency, bandwidth: bandwidthMBps };
+            } catch (error) {
+                console.error('Connection quality detection failed:', error);
+                currentChunkSize = CHUNK_SIZES.slow;
+                return { type: 'slow-limited', latency: 999, bandwidth: 0.5 };
+            }
+        }
+
+        // 🔧 RELIABILITY IMPROVEMENTS - Enhanced retry with jitter
+        function getRetryDelayWithJitter(attempt) {
+            const baseDelay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s, 8s, 16s...
+            const jitter = Math.random() * 1000; // 0-1000ms random jitter
+            return Math.min(30000, baseDelay + jitter); // Cap at 30 seconds
+        }
+
+        // 🔧 RELIABILITY IMPROVEMENTS - Enhanced error logging
+        function logPartError(partNumber, attempt, status, error, delay = null) {
+            const errorType = status || error.code || error.name || 'network';
+            const logMessage = delay ? 
+                `⚠️ Part ${partNumber} retry ${attempt}/5 in ${(delay/1000).toFixed(1)}s due to: ${errorType}` :
+                `❌ Part ${partNumber} failed after 5 retries. Last error: ${errorType}`;
+            
+            console.warn(logMessage);
+            
+            // Add to performance tracker for analytics
+            if (!performanceTracker.errorLog) performanceTracker.errorLog = [];
+            performanceTracker.errorLog.push({
+                part: partNumber,
+                attempt,
+                error: errorType,
+                timestamp: Date.now()
+            });
+            
+            // Also log to existing retry tracking
+            if (delay) {
+                performanceTracker.logRetry(partNumber, attempt, 5, delay, errorType);
+            }
+        }
+
+        // 🔧 RELIABILITY IMPROVEMENTS - Token expiry detection
+        function handleTokenExpiry(error, partNumber) {
+            if (error.status === 403 || error.status === 401) {
+                console.error(`🔐 Token expired for part ${partNumber}. Status: ${error.status}`);
+                alert('Your upload session has expired. Please refresh the page and try again.');
+                return true; // Indicates token expiry was handled
+            }
+            return false; // Not a token expiry issue
+        }
+
+        // Calculate estimated time remaining
+        function calculateETA(loaded, total, speed) {
+            if (speed <= 0) return 'Calculating...';
+            const remainingBytes = total - loaded;
+            const remainingSeconds = remainingBytes / (speed * 1024 * 1024);
+            return formatTime(remainingSeconds * 1000);
+        }
+
+        // Exponential backoff delay calculation
+        function getRetryDelay(retryCount) {
+            return Math.min(1000 * Math.pow(2, retryCount), 30000); // Max 30 seconds delay
+        }
+
+        // Error recovery and retry mechanism
+        async function logUploadFailure(details) {
+            try {
+                await fetch('/api/log-upload-failure', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(details)
+                });
+            } catch (e) {
+                // Ignore logging errors
+            }
+        }
+
+        async function handleUploadError(error, file, uniqueFilename, progressBar, progressText, progressContainer, timerDisplay, startTime, partNumber = null) {
+            console.error('Upload error:', error);
+            // Gather log details
+            const connectionQuality = typeof detectConnectionQuality === 'function' ? await detectConnectionQuality() : 'unknown';
+            const speed = document.getElementById('uploadSpeed')?.textContent || 'unknown';
+            const details = {
+                fileName: uniqueFilename,
+                fileSize: file.size,
+                partNumber,
+                error: error.message || error.toString(),
+                connectionQuality,
+                speed,
+                timestamp: new Date().toISOString(),
+                userAgent: navigator.userAgent
+            };
+            logUploadFailure(details);
+            
+            if (uploadRetryCount < MAX_RETRIES) {
+                const delay = getRetryDelay(uploadRetryCount);
+                console.log(`Retrying upload in ${delay/1000} seconds... (Attempt ${uploadRetryCount + 1}/${MAX_RETRIES})`);
+                
+                progressText.textContent = `Upload failed. Retrying in ${delay/1000} seconds... (Attempt ${uploadRetryCount + 1}/${MAX_RETRIES})`;
+                
+                await new Promise(resolve => setTimeout(resolve, delay));
+                uploadRetryCount++;
+                
+                // Resume from last successful position
+                if (lastLoaded > 0) {
+                    console.log(`Resuming from position: ${lastLoaded}`);
+                    return await uploadFileWithResume(file, uniqueFilename, lastLoaded, progressBar, progressText, progressContainer, timerDisplay, startTime);
+                } else {
+                    return await uploadFile();
+                }
+            } else {
+                console.error('Max retries reached. Upload failed.');
+                progressText.textContent = 'Upload failed after multiple attempts. Please try again.';
+                progressContainer.style.display = 'none';
+                clearInterval(uploadTimerInterval);
+                uploadRetryCount = 0;
+                throw new Error('Max retries reached');
+            }
+        }
+
+        // Upload with resume capability
+        async function uploadFileWithResume(file, uniqueFilename, startPosition, progressBar, progressText, progressContainer, timerDisplay, startTime) {
+            try {
+                const presignResponse = await fetch('/api/presign', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        fileName: uniqueFilename,
+                        contentType: file.type || 'application/octet-stream',
+                        startPosition: startPosition
+                    })
+                });
+
+                if (!presignResponse.ok) {
+                    throw new Error('Failed to get pre-signed URL for resume');
+                }
+
+                const { url } = await presignResponse.json();
+                const xhr = new XMLHttpRequest();
+                xhr.open('PUT', url, true);
+                xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+                xhr.setRequestHeader('Content-Range', `bytes ${startPosition}-${file.size-1}/${file.size}`);
+
+                let lastLoaded = startPosition;
+                let lastTime = Date.now();
+
+                xhr.upload.onprogress = function(event) {
+                    if (event.lengthComputable) {
+                        const totalLoaded = startPosition + event.loaded;
+                        const percent = Math.round((totalLoaded / file.size) * 100);
+                        progressBar.value = percent;
+                        progressText.textContent = `${percent}% (${formatFileSize(totalLoaded)})`;
+                        
+                        const now = Date.now();
+                        const bytesSinceLast = event.loaded - lastLoaded;
+                        const timeSinceLast = (now - lastTime) / 1000;
+                        if (timeSinceLast > 0 && bytesSinceLast > 0) {
+                            const speed = (bytesSinceLast / 1024 / 1024) / timeSinceLast; // MB/s
+                            const speedMbps = speed * 8; // Convert to Mbps
+                            document.getElementById('uploadSpeed').textContent = speedMbps.toFixed(2) + ' Mbps';
+                            document.getElementById('uploadETA').textContent = calculateETA(totalLoaded, file.size, speed);
+                        }
+                        lastLoaded = event.loaded;
+                        lastTime = now;
+                    }
+                };
+
+                return new Promise((resolve, reject) => {
+                    xhr.onload = function() {
+                        if (xhr.status >= 200 && xhr.status < 300) {
+                            uploadRetryCount = 0;
+                            resolve();
+                        } else {
+                            reject(new Error(`Upload failed with status ${xhr.status}`));
+                        }
+                    };
+                    xhr.onerror = function() {
+                        reject(new Error('Network error during upload'));
+                    };
+                    xhr.send(file.slice(startPosition));
+                });
+            } catch (error) {
+                return handleUploadError(error, file, uniqueFilename, progressBar, progressText, progressContainer, timerDisplay, startTime);
+            }
+        }
+
+        async function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            const progressContainer = document.getElementById('uploadProgressContainer');
+            const progressBar = document.getElementById('uploadProgress');
+            const progressText = document.getElementById('uploadProgressText');
+            const timerDisplay = document.getElementById('uploadTimer');
+            const speedDisplay = document.getElementById('uploadSpeed');
+            const fileSizeDisplay = document.getElementById('uploadFileSize');
+            const etaDisplay = document.getElementById('uploadETA');
+
+            if (!file) {
+                alert('Please select a file first');
+                return;
+            }
+
+            if (!isValidVideoFile(file)) {
+                return;
+            }
+
+            // Detect connection quality before starting upload
+            const connectionInfo = await detectConnectionQuality();
+            console.log(`Connection quality: ${connectionInfo.type}, Chunk size: ${currentChunkSize / (1024 * 1024)}MB`);
+
+            // Add ETA display if it doesn't exist
+            if (!etaDisplay) {
+                const etaDiv = document.createElement('div');
+                etaDiv.id = 'uploadETA';
+                etaDiv.style.marginTop = '5px';
+                etaDiv.style.color = '#555';
+                progressContainer.appendChild(etaDiv);
+            }
+
+            // Generate a unique filename with timestamp
+            const uniqueFilename = getTimestampedFilename(file.name);
+
+            progressContainer.style.display = 'block';
+            progressBar.value = 0;
+            progressText.textContent = `0% (0 / ${formatFileSize(file.size)})`;
+            timerDisplay.textContent = '00:00:00';
+            speedDisplay.textContent = '0.00 Mbps';
+            etaDisplay.textContent = 'Calculating...';
+
+            let startTime = Date.now();
+            if (uploadTimerInterval) clearInterval(uploadTimerInterval);
+            uploadTimerInterval = setInterval(() => {
+                timerDisplay.textContent = formatTime(Date.now() - startTime);
+            }, 100);
+
+            // Use multipart upload for files over 1GB (1 * 1024 * 1024 * 1024 bytes)
+            if (file.size > 1 * 1024 * 1024 * 1024) {
+                await multipartUpload(file, uniqueFilename, progressBar, progressText, progressContainer, timerDisplay, startTime);
+                return;
+            }
+
+            // Step 1: Get pre-signed URL from backend
+            let presignResponse;
+            try {
+                presignResponse = await fetch('/api/presign', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        fileName: uniqueFilename,
+                        contentType: file.type || 'application/octet-stream'
+                    })
+                });
+            } catch (err) {
+                progressContainer.style.display = 'none';
+                clearInterval(uploadTimerInterval);
+                timerDisplay.textContent = formatTime(lastUploadTime);
+                alert('Failed to get pre-signed URL');
+                return;
+            }
+
+            if (!presignResponse.ok) {
+                progressContainer.style.display = 'none';
+                clearInterval(uploadTimerInterval);
+                timerDisplay.textContent = formatTime(lastUploadTime);
+                alert('Failed to get pre-signed URL');
+                return;
+            }
+
+            const { url } = await presignResponse.json();
+
+            // Step 2: Upload file directly to R2 using the pre-signed URL
+            let lastLoaded = 0;
+            let lastTime = Date.now();
+            const xhr = new XMLHttpRequest();
+            xhr.open('PUT', url, true);
+            xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+
+            xhr.upload.onprogress = function (event) {
+                if (event.lengthComputable) {
+                    const percent = Math.round((event.loaded / event.total) * 100);
+                    progressBar.value = percent;
+                    progressText.textContent = `${percent}% (${formatFileSize(event.loaded)})`;
+                    // Real-time speed calculation
+                    const now = Date.now();
+                    const bytesSinceLast = event.loaded - lastLoaded;
+                    const timeSinceLast = (now - lastTime) / 1000; // seconds
+                    if (timeSinceLast > 0 && bytesSinceLast > 0) {
+                        const speed = (bytesSinceLast / 1024 / 1024) / timeSinceLast; // MB/s
+                        const speedMbps = speed * 8; // Convert to Mbps
+                        speedDisplay.textContent = speedMbps.toFixed(2) + ' Mbps';
+                        etaDisplay.textContent = calculateETA(event.loaded, event.total, speed);
+                    }
+                    lastLoaded = event.loaded;
+                    lastTime = now;
+                }
+            };
+
+            xhr.onload = async function () {
+                progressContainer.style.display = 'none';
+                clearInterval(uploadTimerInterval);
+                lastUploadTime = Date.now() - startTime;
+                lastUploadSize = file.size;
+                timerDisplay.textContent = formatTime(lastUploadTime);
+                // Show average speed at the end
+                if (lastUploadTime > 0 && lastUploadSize > 0) {
+                    const mb = lastUploadSize / 1024 / 1024;
+                    const sec = lastUploadTime / 1000;
+                    const speedMBs = mb / sec; // MB/s
+                    const speedMbps = speedMBs * 8; // Convert to Mbps
+                    speedDisplay.textContent = `${speedMbps.toFixed(2)} Mbps (avg)`;
+                }
+                // Show file size after upload
+                if (fileSizeDisplay) fileSizeDisplay.textContent = `File Size: ${formatFileSize(file.size)}`;
+                // Notify backend after upload
+                await fetch('/api/notify-upload', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        fileName: uniqueFilename,
+                        size: file.size,
+                        contentType: file.type || 'application/octet-stream'
+                    })
+                });
+                alert('File uploaded successfully!');
+                refreshFileList();
+            };
+
+            xhr.onerror = function() {
+                handleUploadError(new Error('Network error during upload'), file, uniqueFilename, progressBar, progressText, progressContainer, timerDisplay, startTime);
+            };
+
+            xhr.send(file);
+        }
+
+        // Multipart upload logic for files > 1GB
+        async function multipartUpload(file, uniqueFilename, progressBar, progressText, progressContainer, timerDisplay, startTime) {
+            const speedDisplay = document.getElementById('uploadSpeed');
+            const fileSizeDisplay = document.getElementById('uploadFileSize');
+            const etaDisplay = document.getElementById('uploadETA');
+            try {
+                // Detect connection quality (reuse logic from uploadFile)
+                let connectionInfo = { type: 'medium', latency: 200, bandwidth: 2 };
+                if (typeof detectConnectionQuality === 'function') {
+                    connectionInfo = await detectConnectionQuality();
+                }
+                
+                // Optimized part size and parallelism based on connection type
+                let partSize;
+                let maxParallel;
+                
+                // 🎯 BANDWIDTH-ADAPTIVE STRATEGIES (based on estimated bandwidth)
+                if (connectionInfo.bandwidth >= 8) {
+                    // Very Fast Connections (8+ MB/s) - Your PC level
+                    partSize = 14 * 1024 * 1024; // 14MB parts (proven optimal)
+                    maxParallel = 120; // Proven best for fast connections
+                    console.log(`🚀 VERY FAST STRATEGY: ${(connectionInfo.bandwidth * 8).toFixed(1)} Mbps → 14MB parts, 120 parallel`);
+                } else if (connectionInfo.bandwidth >= 4) {
+                    // Fast Connections (4-8 MB/s) - Good performance  
+                    partSize = 15 * 1024 * 1024; // 15MB parts
+                    maxParallel = 80; // Moderate parallelism
+                    console.log(`🔥 FAST STRATEGY: ${(connectionInfo.bandwidth * 8).toFixed(1)} Mbps → 15MB parts, 80 parallel`);
+                } else if (connectionInfo.bandwidth >= 2) {
+                    // Limited Connections (2-4 MB/s) - WNET level
+                    partSize = 20 * 1024 * 1024; // 20MB parts (less overhead)
+                    maxParallel = 50; // Optimal for bandwidth-limited
+                    console.log(`⚡ LIMITED STRATEGY: ${(connectionInfo.bandwidth * 8).toFixed(1)} Mbps → 20MB parts, 50 parallel`);
+                } else {
+                    // Slow Connections (<2 MB/s) - Mobile/rural
+                    partSize = 25 * 1024 * 1024; // 25MB parts (minimize overhead)
+                    maxParallel = 30; // Conservative parallelism
+                    console.log(`🐌 SLOW STRATEGY: ${(connectionInfo.bandwidth * 8).toFixed(1)} Mbps → 25MB parts, 30 parallel`);
+                }
+                
+                console.log(`🚀 ULTRA-OPTIMIZED STRATEGY: ${connectionInfo.type} → ${partSize / (1024*1024)}MB parts, ${maxParallel} parallel (target: 11+ MB/s)`);
+                
+                // Show performance panel and log initial info
+                performanceTracker.reset();
+                performanceTracker.showPerformancePanel();
+                performanceTracker.updateConnection(connectionInfo);
+                performanceTracker.updateStrategy(partSize, maxParallel, Math.ceil(file.size / partSize));
+                
+                // Adaptive performance tuning - boost for high-performing connections
+                let adaptiveBoost = false;
+                const performanceCheckInterval = setInterval(() => {
+                    if (uploadStartTime > 0) {
+                        const elapsedSec = (Date.now() - uploadStartTime) / 1000;
+                        const currentSpeed = (totalUploaded / 1024 / 1024) / elapsedSec;
+                        
+                        // NO BOOST NEEDED - Starting directly with optimal 120 parallel
+                        // (Simplified: removed complex ramp-up logic)
+                    }
+                }, 10000); // Check every 10 seconds
+                
+                // Aggressive connection pre-warming for optimal HTTP/2 multiplexing
+                console.log('Pre-warming connections...');
+                const warmupPromises = [];
+                const warmupCount = Math.min(maxParallel, 20); // More aggressive warmup
+                for (let i = 0; i < warmupCount; i++) {
+                    warmupPromises.push(
+                        fetch('/api/ping', { method: 'HEAD', keepalive: true })
+                        .catch(() => {}) // Ignore errors, just warming
+                    );
+                }
+                await Promise.allSettled(warmupPromises);
+                console.log(`Connection warm-up complete: ${warmupCount} connections prepared`);
+                
+                // Provider limits
+                const MIN_PART_SIZE = 5 * 1024 * 1024; // 5MB
+                const MAX_NUM_PARTS = 10000;
+                
+                // Step 1: Start multipart upload
+                const startRes = await fetch('/api/multipart/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        fileName: uniqueFilename,
+                        contentType: file.type || 'application/octet-stream'
+                    })
+                });
+                if (!startRes.ok) throw new Error('Failed to start multipart upload');
+                const { uploadId } = await startRes.json();
+
+                // Persistent checkpointing
+                const checkpointKey = `multipart_${uniqueFilename}_${uploadId}`;
+                let checkpoint = localStorage.getItem(checkpointKey);
+                let completedPartsCheckpoint = checkpoint ? JSON.parse(checkpoint) : [];
+                
+                // Adjust part size upward if too many parts
+                let partCount = Math.ceil(file.size / partSize);
+                if (partCount > MAX_NUM_PARTS) {
+                    partSize = Math.ceil(file.size / MAX_NUM_PARTS);
+                    // Ensure partSize is at least MIN_PART_SIZE
+                    if (partSize < MIN_PART_SIZE) partSize = MIN_PART_SIZE;
+                    partCount = Math.ceil(file.size / partSize);
+                }
+
+                let parts = [];
+                let completedParts = 0;
+                let totalUploaded = 0; // Track total bytes uploaded across all parts
+                let lastReportedTime = Date.now();
+                let lastReportedBytes = 0;
+                const uploadedBytesPerPart = Array(partCount).fill(0); // Track per-part progress
+
+                // Prepare all part blobs and numbers
+                const partBlobs = [];
+                for (let partNumber = 1; partNumber <= partCount; partNumber++) {
+                    const start = (partNumber - 1) * partSize;
+                    const end = Math.min(start + partSize, file.size);
+                    partBlobs.push({
+                        partNumber,
+                        blob: file.slice(start, end),
+                        index: partNumber - 1
+                    });
+                }
+
+                // Restore completed parts from checkpoint
+                for (const cp of completedPartsCheckpoint) {
+                    parts[cp.PartNumber - 1] = { ETag: cp.ETag, PartNumber: cp.PartNumber };
+                }
+
+                // Parallel upload logic - More aggressive for video files
+                let currentIndex = 0;
+                let activeUploads = 0;
+                let errorOccurred = false;
+
+                uploadStartTime = Date.now();
+
+                async function uploadPart(partBlob) {
+                    if (errorOccurred) return;
+                    const { partNumber, blob, index } = partBlob;
+                    // Skip if already completed in checkpoint
+                    if (parts[partNumber - 1]) {
+                        completedParts++;
+                        return;
+                    }
+                    // Step 3: Get pre-signed URL for this part
+                    const presignPartRes = await fetch('/api/multipart/presign-part', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            fileName: uniqueFilename,
+                            uploadId,
+                            partNumber,
+                            contentType: file.type || 'application/octet-stream'
+                        })
+                    });
+                    if (!presignPartRes.ok) throw new Error('Failed to get part pre-signed URL');
+                    const { url } = await presignPartRes.json();
+                    console.log("Pre-signed URL for part:", url);
+
+                    // Step 4: Upload part with retry logic
+                    let etag = null;
+                    let attempt = 0;
+                    const maxAttempts = 5; // Increased from 3 to 5 for video files
+                    const baseDelay = 2000; // 2 seconds base delay
+
+                    while (attempt < maxAttempts && !etag && !errorOccurred) {
+                        attempt++;
+                        try {
+                            const partStartTime = Date.now();
+                            etag = await new Promise((resolve, reject) => {
+                                const partXhr = new XMLHttpRequest();
+                                partXhr.open('PUT', url, true);
+                                partXhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+                                // Optimize for aggressive uploading
+                                if (partXhr.setRequestHeader) {
+                                    partXhr.setRequestHeader('Cache-Control', 'no-cache');
+                                    // Note: Connection header removed - browsers control this automatically
+                                }
+
+                                partXhr.upload.onprogress = function (event) {
+                                    if (event.lengthComputable) {
+                                        // Calculate delta for this part
+                                        const prev = uploadedBytesPerPart[index];
+                                        uploadedBytesPerPart[index] = event.loaded;
+                                        const delta = event.loaded - prev;
+                                        totalUploaded += delta;
+
+                                        // Update progress bar and text
+                                        const percent = Math.round((totalUploaded / file.size) * 100);
+                                        progressBar.value = percent;
+                                        progressText.textContent = `${percent}% (${formatFileSize(totalUploaded)})`;
+
+                                        // Real-time speed calculation (aggregate)
+                                        const now = Date.now();
+                                        const bytesSinceLast = totalUploaded - lastReportedBytes;
+                                        const timeSinceLast = (now - lastReportedTime) / 1000; // seconds
+                                        // Calculate average speed since upload started
+                                        const elapsedSec = (now - uploadStartTime) / 1000;
+                                        let avgSpeed = 0;
+                                        if (elapsedSec > 0) {
+                                            avgSpeed = (totalUploaded / 1024 / 1024) / elapsedSec; // MB/s
+                                        }
+                                        const avgSpeedMbps = avgSpeed * 8; // Convert to Mbps
+                                        speedDisplay.textContent = avgSpeedMbps.toFixed(2) + ' Mbps';
+                                        // Only update ETA at most once per second for smoothness
+                                        if (now - lastEtaUpdate > 1000) {
+                                            etaDisplay.textContent = 'Time Remaining: ' + calculateETA(totalUploaded, file.size, avgSpeed);
+                                            lastEtaUpdate = now;
+                                        }
+                                            lastReportedBytes = totalUploaded;
+                                            lastReportedTime = now;
+                                    }
+                                };
+
+                                partXhr.onload = function () {
+                                    if (partXhr.status === 200) {
+                                        const etag = partXhr.getResponseHeader('ETag')?.replaceAll('"', '');
+                                        // Ensure final progress for this part is counted
+                                        uploadedBytesPerPart[index] = blob.size;
+                                        totalUploaded = uploadedBytesPerPart.reduce((a, b) => a + b, 0);
+                                        const percent = Math.round((totalUploaded / file.size) * 100);
+                                        progressBar.value = percent;
+                                        progressText.textContent = `${percent}% (${formatFileSize(totalUploaded)})`;
+                                        
+                                        // Track part completion
+                                        const partTime = Date.now() - partStartTime;
+                                        performanceTracker.logPartComplete(partNumber, blob.size, partTime, activeUploads);
+                                        
+                                        resolve(etag);
+                                    } else {
+                                        // 🔧 RELIABILITY IMPROVEMENT - Create error object with status for better handling
+                                        const error = new Error('Part upload failed: ' + partXhr.statusText);
+                                        error.status = partXhr.status;
+                                        reject(error);
+                                    }
+                                };
+                                partXhr.onerror = function () {
+                                    reject(new Error('Part upload failed: Network error'));
+                                };
+                                partXhr.send(blob);
+                            });
+                        } catch (err) {
+                            // 🔧 RELIABILITY IMPROVEMENT - Check for token expiry first
+                            if (handleTokenExpiry(err, partNumber)) {
+                                errorOccurred = true;
+                                return; // Exit upload on token expiry
+                            }
+                            
+                            // 🔧 RELIABILITY IMPROVEMENT - Enhanced error logging
+                            const delay = getRetryDelayWithJitter(attempt - 1);
+                            logPartError(partNumber, attempt, err.status, err, attempt < maxAttempts ? delay : null);
+                            
+                            if (attempt >= maxAttempts) {
+                                errorOccurred = true;
+                                throw new Error(`Part ${partNumber} failed after ${maxAttempts} attempts: ${err.message}`);
+                            }
+                            
+                            // Wait with jittered delay before retry
+                            await new Promise(res => setTimeout(res, delay));
+                        }
+                    }
+                    parts[partNumber - 1] = { ETag: etag, PartNumber: partNumber };
+                    completedParts++;
+                    
+                    // Log progress every 10 parts
+                    if (completedParts % 10 === 0 || completedParts === partCount) {
+                        performanceTracker.logProgress(completedParts, partCount, totalUploaded, Date.now() - uploadStartTime);
+                    }
+                    
+                    // Update checkpoint in localStorage
+                    localStorage.setItem(checkpointKey, JSON.stringify(parts.filter(Boolean)));
+                }
+
+                // Function to manage parallel uploads - Zero delay initiation
+                async function runParallelUploads() {
+                    return new Promise((resolve, reject) => {
+                        let finished = 0;
+                        
+                        // Start all uploads immediately up to max parallel limit
+                        function startNextBatch() {
+                            while (activeUploads < maxParallel && currentIndex < partBlobs.length) {
+                                if (errorOccurred) return reject(new Error('Upload failed'));
+                                
+                                activeUploads++;
+                                const partBlob = partBlobs[currentIndex++];
+                                
+                                // Start immediately without await
+                                uploadPart(partBlob)
+                                    .then(() => {
+                                        finished++;
+                                        activeUploads--;
+                                        
+                                        // Immediately start next part with aggressive scheduling
+                                        if (currentIndex < partBlobs.length) {
+                                            startNextBatch(); // No delay - immediate execution
+                                        } else if (finished === partBlobs.length) {
+                                            resolve();
+                                        }
+                                    })
+                                    .catch(err => {
+                                        errorOccurred = true;
+                                        reject(err);
+                                    });
+                            }
+                        }
+                        
+                        startNextBatch();
+                    });
+                }
+
+                await runParallelUploads();
+                if (errorOccurred) throw new Error('Multipart upload failed');
+
+                // Final performance analysis
+                const totalTime = Date.now() - uploadStartTime;
+                performanceTracker.logFinalSummary(totalTime, partCount, partSize);
+
+                // Step 5: Complete multipart upload
+                const completeRes = await fetch('/api/multipart/complete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        fileName: uniqueFilename,
+                        uploadId,
+                        parts
+                    })
+                });
+                if (!completeRes.ok) throw new Error('Failed to complete multipart upload');
+
+                // Notify backend after upload
+                await fetch('/api/notify-upload', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        fileName: uniqueFilename,
+                        size: file.size,
+                        contentType: file.type || 'application/octet-stream'
+                    })
+                });
+
+                progressContainer.style.display = 'none';
+                clearInterval(uploadTimerInterval);
+                lastUploadTime = Date.now() - startTime;
+                lastUploadSize = file.size;
+                timerDisplay.textContent = formatTime(lastUploadTime);
+                if (lastUploadTime > 0 && lastUploadSize > 0) {
+                    const mb = lastUploadSize / 1024 / 1024;
+                    const sec = lastUploadTime / 1000;
+                    const speedMBs = mb / sec; // MB/s
+                    const speedMbps = speedMBs * 8; // Convert to Mbps
+                    speedDisplay.textContent = `${speedMbps.toFixed(2)} Mbps (avg)`;
+                }
+                // Show file size after upload
+                if (fileSizeDisplay) fileSizeDisplay.textContent = `File Size: ${formatFileSize(file.size)}`;
+                alert('File uploaded successfully!');
+                refreshFileList();
+
+                // Clear checkpoint on complete
+                localStorage.removeItem(checkpointKey);
+                
+                // Clean up performance monitoring
+                if (performanceCheckInterval) {
+                    clearInterval(performanceCheckInterval);
+                }
+            } catch (error) {
+                // On error, log details
+                const connectionQuality = typeof detectConnectionQuality === 'function' ? await detectConnectionQuality() : 'unknown';
+                const speed = document.getElementById('uploadSpeed')?.textContent || 'unknown';
+                const details = {
+                    fileName: uniqueFilename,
+                    fileSize: file.size,
+                    error: error.message || error.toString(),
+                    connectionQuality,
+                    speed,
+                    timestamp: new Date().toISOString(),
+                    userAgent: navigator.userAgent
+                };
+                logUploadFailure(details);
+                progressContainer.style.display = 'none';
+                clearInterval(uploadTimerInterval);
+                timerDisplay.textContent = formatTime(lastUploadTime);
+                speedDisplay.textContent = '0.00 Mbps';
+                
+                // Clean up performance monitoring on error
+                if (performanceCheckInterval) {
+                    clearInterval(performanceCheckInterval);
+                }
+                
+                alert('Multipart upload failed: ' + error.message);
+            }
+        }
+
+        async function refreshFileList() {
+            try {
+                const response = await fetch('/api/files');
+                const files = await response.json();
+                
+                const fileList = document.getElementById('fileList');
+                fileList.innerHTML = '';
+
+                files.forEach(file => {
+                    const fileItem = document.createElement('div');
+                    fileItem.className = 'file-item';
+                    // Show file size next to file name
+                    fileItem.innerHTML = `
+                        <span>${file.name} <span style="color:#888;font-size:0.95em;">(File Size: ${formatFileSize(file.size)})</span></span>
+                        <button onclick="downloadFile('${file.name}')">Download</button>
+                    `;
+                    fileList.appendChild(fileItem);
+                });
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to refresh file list');
+            }
+        }
+
+        async function downloadFile(fileName) {
+            const progressContainer = document.getElementById('downloadProgressContainer');
+            const progressBar = document.getElementById('downloadProgress');
+            const progressText = document.getElementById('downloadProgressText');
+            const timerDisplay = document.getElementById('downloadTimer');
+            const savingMsg = document.getElementById('downloadSavingMsg');
+            const speedDisplay = document.getElementById('downloadSpeed');
+            const etaDisplay = document.getElementById('downloadETA');
+            
+            // Show initial message
+            progressContainer.style.display = 'block';
+            progressBar.value = 0;
+            progressText.textContent = 'Preparing download...';
+            timerDisplay.textContent = '00:00:00';
+            speedDisplay.textContent = '0.00 Mbps';
+            savingMsg.textContent = 'Starting download...';
+            etaDisplay.textContent = 'Calculating...';
+            
+            let startTime = Date.now();
+            if (downloadTimerInterval) clearInterval(downloadTimerInterval);
+            downloadTimerInterval = setInterval(() => {
+                timerDisplay.textContent = formatTime(Date.now() - startTime);
+            }, 100);
+
+            // 🚀 SPEED FIX: Use direct R2 public URLs for maximum speed (no backend throttling)
+            const publicUrl = `${R2_PUBLIC_URL_BASE}/${encodeURIComponent(fileName)}`;
+
+            // Step 1: Get file size with HEAD request
+            let fileSize = 0;
+            try {
+                const headRes = await fetch(publicUrl, { method: 'HEAD' });
+                if (!headRes.ok) throw new Error('Failed to get file size');
+                fileSize = parseInt(headRes.headers.get('content-length'), 10);
+                console.log(`File size: ${formatFileSize(fileSize)}`);
+            } catch (err) {
+                progressContainer.style.display = 'none';
+                clearInterval(downloadTimerInterval);
+                alert('Failed to get file size: ' + err.message);
+                return;
+            }
+
+            // 🎯 DIRECT-TO-DISK DOWNLOAD: File System Access API (zero Chrome delay)
+            if (fileSize > 50 * 1024 * 1024 && 'showSaveFilePicker' in window) { // 50MB+ and supports File System Access API
+                console.log(`Large file detected (${formatFileSize(fileSize)}) - using direct-to-disk streaming (zero Chrome delay)`);
+                await directToDiskDownload(fileName, publicUrl, fileSize, progressBar, progressText, progressContainer, timerDisplay, startTime, savingMsg, speedDisplay, etaDisplay);
+                return;
+            }
+
+            // Fallback to streaming download for smaller files or unsupported browsers
+            console.log(`Using streaming download with progress tracking (file size: ${formatFileSize(fileSize)}, File System Access API supported: ${'showSaveFilePicker' in window})`);
+            await streamingDownload(fileName, publicUrl, fileSize, progressBar, progressText, progressContainer, timerDisplay, startTime, savingMsg, speedDisplay, etaDisplay);
+        }
+
+        // 🎯 DIRECT-TO-DISK DOWNLOAD: File System Access API (zero Chrome delay)
+        async function directToDiskDownload(fileName, publicUrl, fileSize, progressBar, progressText, progressContainer, timerDisplay, startTime, savingMsg, speedDisplay, etaDisplay) {
+            try {
+                savingMsg.textContent = 'Requesting save location...';
+                
+                // Show save dialog
+                const fileHandle = await window.showSaveFilePicker({
+                    suggestedName: fileName,
+                    types: [{
+                        description: 'Video Files',
+                        accept: {
+                            'video/*': ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.wmv', '.mxf'],
+                            'application/octet-stream': ['.*']
+                        }
+                    }]
+                });
+
+                const writable = await fileHandle.createWritable();
+                savingMsg.textContent = 'Downloading directly to file...';
+                console.log('Direct-to-disk streaming started');
+                
+                let bytesWritten = 0;
+                let lastTime = Date.now();
+                let lastBytes = 0;
+                let speeds = [];
+                
+                const response = await fetch(publicUrl);
+                if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                
+                // Validate content length matches expected file size
+                const responseSize = parseInt(response.headers.get('content-length'), 10);
+                if (responseSize && responseSize !== fileSize) {
+                    console.warn(`Content-Length mismatch: expected ${fileSize}, got ${responseSize}`);
+                }
+                
+                const reader = response.body.getReader();
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    // Write chunk directly to file
+                    try {
+                        await writable.write(value);
+                        bytesWritten += value.length;
+                    } catch (writeError) {
+                        console.error('Write error:', writeError);
+                        // Attempt to close and retry once
+                        await writable.close();
+                        throw new Error(`Disk write failed: ${writeError.message}`);
+                    }
+                    
+                    // Update progress
+                    const percent = Math.round((bytesWritten / fileSize) * 100);
+                    progressBar.value = percent;
+                    progressText.textContent = `${percent}% (${formatFileSize(bytesWritten)} / ${formatFileSize(fileSize)})`;
+                    
+                    // Calculate speed and ETA (update every 500ms)
+                    const now = Date.now();
+                    if (now - lastTime >= 500) {
+                        const bytesSinceLast = bytesWritten - lastBytes;
+                        const timeSinceLast = (now - lastTime) / 1000;
+                        const currentSpeed = (bytesSinceLast / 1024 / 1024) / timeSinceLast; // MB/s
+                        
+                        speeds.push(currentSpeed);
+                        if (speeds.length > 10) speeds.shift(); // Keep last 10 readings for smoothing
+                        
+                        const avgSpeed = speeds.reduce((a, b) => a + b, 0) / speeds.length;
+                        const avgSpeedMbps = avgSpeed * 8; // Convert to Mbps
+                        speedDisplay.textContent = `${avgSpeedMbps.toFixed(2)} Mbps`;
+                        
+                        // Calculate ETA
+                        const remainingBytes = fileSize - bytesWritten;
+                        const eta = remainingBytes / (avgSpeed * 1024 * 1024);
+                        etaDisplay.textContent = `ETA: ${formatTime(eta * 1000)}`;
+                        
+                        lastTime = now;
+                        lastBytes = bytesWritten;
+                    }
+                }
+                
+                await writable.close();
+                
+                // Success
+                progressContainer.style.display = 'none';
+                clearInterval(downloadTimerInterval);
+                lastDownloadTime = Date.now() - startTime;
+                lastDownloadSize = bytesWritten;
+                timerDisplay.textContent = formatTime(lastDownloadTime);
+                
+                if (lastDownloadTime > 0 && lastDownloadSize > 0) {
+                    const mb = lastDownloadSize / 1024 / 1024;
+                    const sec = lastDownloadTime / 1000;
+                    const speedMBs = mb / sec; // MB/s
+                    const speedMbps = speedMBs * 8; // Convert to Mbps
+                    speedDisplay.textContent = `${speedMbps.toFixed(2)} Mbps (avg)`;
+                }
+                
+                console.log(`Direct-to-disk download complete: ${formatFileSize(bytesWritten)} in ${formatTime(lastDownloadTime)}`);
+                savingMsg.textContent = 'Download complete! File saved directly to your chosen location.';
+                setTimeout(() => { savingMsg.textContent = ''; }, 5000);
+                
+                // Log download
+                await logDownload(fileName, lastDownloadSize, 'direct-to-disk', speedDisplay.textContent);
+                
+            } catch (error) {
+                console.error('Direct-to-disk download error:', error);
+                
+                // Categorize error types
+                let errorType = 'unknown-error';
+                if (error.name === 'AbortError' || error.message.includes('user aborted')) {
+                    errorType = 'user-cancelled';
+                } else if (error.message.includes('Disk write failed')) {
+                    errorType = 'disk-write-error';
+                } else if (error.message.includes('Content-Length mismatch') || error.message.includes('ERR_CONTENT_LENGTH_MISMATCH')) {
+                    errorType = 'content-length-mismatch';
+                } else if (error.message.includes('Network') || error.message.includes('fetch')) {
+                    errorType = 'network-stream-error';
+                }
+                
+                console.log(`Direct-to-disk failed (${errorType}), falling back to streaming download`);
+                
+                if (errorType === 'user-cancelled') {
+                    progressContainer.style.display = 'none';
+                    clearInterval(downloadTimerInterval);
+                    speedDisplay.textContent = '0.00 Mbps';
+                    savingMsg.textContent = '';
+                    return;
+                }
+                
+                // Fallback to streaming download
+                await streamingDownload(fileName, publicUrl, fileSize, progressBar, progressText, progressContainer, timerDisplay, startTime, savingMsg, speedDisplay, etaDisplay);
+            }
+        }
+
+        // 🌊 STREAMING DOWNLOAD with ERR_CONTENT_LENGTH_MISMATCH detection
+        async function streamingDownload(fileName, publicUrl, fileSize, progressBar, progressText, progressContainer, timerDisplay, startTime, savingMsg, speedDisplay, etaDisplay) {
+            try {
+                const response = await fetch(publicUrl);
+                if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                
+                const reader = response.body.getReader();
+                let receivedLength = 0;
+                let chunks = [];
+                let lastTime = Date.now();
+                let lastBytes = 0;
+                let speeds = [];
+                
+                savingMsg.textContent = 'Downloading...';
+                console.log('Streaming download started');
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    chunks.push(value);
+                    receivedLength += value.length;
+                    
+                    // Update progress
+                    const percent = Math.round((receivedLength / fileSize) * 100);
+                    progressBar.value = percent;
+                    progressText.textContent = `${percent}% (${formatFileSize(receivedLength)} / ${formatFileSize(fileSize)})`;
+                    
+                    // Calculate speed and ETA (update every 250ms for more responsive UI)
+                    const now = Date.now();
+                    if (now - lastTime >= 250) {
+                        const bytesSinceLast = receivedLength - lastBytes;
+                        const timeSinceLast = (now - lastTime) / 1000;
+                        const currentSpeed = (bytesSinceLast / 1024 / 1024) / timeSinceLast; // MB/s
+                        
+                        speeds.push(currentSpeed);
+                        if (speeds.length > 8) speeds.shift(); // Keep last 8 readings for smoothing
+                        
+                        const avgSpeed = speeds.reduce((a, b) => a + b, 0) / speeds.length;
+                        const avgSpeedMbps = avgSpeed * 8; // Convert to Mbps
+                        speedDisplay.textContent = `${avgSpeedMbps.toFixed(2)} Mbps`;
+                        
+                        // Calculate ETA
+                        const remainingBytes = fileSize - receivedLength;
+                        const eta = remainingBytes / (avgSpeed * 1024 * 1024);
+                        etaDisplay.textContent = `ETA: ${formatTime(eta * 1000)}`;
+                        
+                        lastTime = now;
+                        lastBytes = receivedLength;
+                    }
+                }
+                
+                // Check for content-length mismatch
+                if (receivedLength !== fileSize) {
+                    console.warn(`ERR_CONTENT_LENGTH_MISMATCH detected: expected ${fileSize}, received ${receivedLength}`);
+                    throw new Error(`ERR_CONTENT_LENGTH_MISMATCH: Content-Length promised ${fileSize} bytes but only ${receivedLength} bytes received`);
+                }
+                
+                // Create and download blob
+                savingMsg.textContent = 'Preparing file for download...';
+                const blob = new Blob(chunks, { type: 'application/octet-stream' });
+                
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+                
+                // Success
+                progressContainer.style.display = 'none';
+                clearInterval(downloadTimerInterval);
+                lastDownloadTime = Date.now() - startTime;
+                lastDownloadSize = blob.size;
+                timerDisplay.textContent = formatTime(lastDownloadTime);
+                
+                if (lastDownloadTime > 0 && lastDownloadSize > 0) {
+                    const mb = lastDownloadSize / 1024 / 1024;
+                    const sec = lastDownloadTime / 1000;
+                    const speedMBs = mb / sec; // MB/s
+                    const speedMbps = speedMBs * 8; // Convert to Mbps
+                    speedDisplay.textContent = `${speedMbps.toFixed(2)} Mbps (avg)`;
+                }
+                
+                console.log(`Streaming download complete: ${formatFileSize(lastDownloadSize)} in ${formatTime(lastDownloadTime)}`);
+                savingMsg.textContent = 'Download complete! Check your downloads folder.';
+                setTimeout(() => { savingMsg.textContent = ''; }, 3000);
+                
+                // Log download
+                await logDownload(fileName, lastDownloadSize, 'streaming', speedDisplay.textContent);
+                
+            } catch (error) {
+                console.error('Streaming download error:', error);
+                
+                // Detect content-length mismatch errors
+                if (error.message.includes('ERR_CONTENT_LENGTH_MISMATCH') || error.message.includes('Content-Length')) {
+                    console.log('Content-Length mismatch detected, falling back to chunked download');
+                    await chunkedDownload(fileName, publicUrl, fileSize, progressBar, progressText, progressContainer, timerDisplay, startTime, savingMsg, speedDisplay, etaDisplay);
+                } else {
+                    // Show error
+                    progressContainer.style.display = 'none';
+                    clearInterval(downloadTimerInterval);
+                    speedDisplay.textContent = '0.00 Mbps';
+                    savingMsg.textContent = '';
+                    alert(`Download failed: ${error.message}`);
+                }
+            }
+        }
+
+        // 🧩 CHUNKED DOWNLOAD: Last resort for ERR_CONTENT_LENGTH_MISMATCH
+        async function chunkedDownload(fileName, publicUrl, fileSize, progressBar, progressText, progressContainer, timerDisplay, startTime, savingMsg, speedDisplay, etaDisplay) {
+            try {
+                const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB chunks
+                const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
+                let chunks = new Array(totalChunks);
+                let bytesDownloaded = 0;
+                let lastTime = Date.now();
+                let lastBytes = 0;
+                let speeds = [];
+                
+                savingMsg.textContent = `Downloading in ${totalChunks} chunks...`;
+                console.log(`Chunked download started: ${totalChunks} chunks of ${formatFileSize(CHUNK_SIZE)}`);
+                
+                async function downloadChunk(chunkIndex, retries = 3) {
+                    const start = chunkIndex * CHUNK_SIZE;
+                    const end = Math.min(start + CHUNK_SIZE - 1, fileSize - 1);
+                    
+                    for (let attempt = 1; attempt <= retries; attempt++) {
+                        try {
+                            const response = await fetch(publicUrl, {
+                                headers: { 'Range': `bytes=${start}-${end}` }
+                            });
+                            
+                            if (!response.ok) {
+                                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                            }
+                            
+                            const chunk = await response.arrayBuffer();
+                            chunks[chunkIndex] = chunk;
+                            
+                            const chunkSize = chunk.byteLength;
+                            bytesDownloaded += chunkSize;
+                            
+                            // Update progress
+                            const percent = Math.round((bytesDownloaded / fileSize) * 100);
+                            progressBar.value = percent;
+                            progressText.textContent = `${percent}% (${formatFileSize(bytesDownloaded)} / ${formatFileSize(fileSize)})`;
+                            
+                            // Calculate speed and ETA
+                            const now = Date.now();
+                            if (now - lastTime >= 500) {
+                                const bytesSinceLast = bytesDownloaded - lastBytes;
+                                const timeSinceLast = (now - lastTime) / 1000;
+                                const currentSpeed = (bytesSinceLast / 1024 / 1024) / timeSinceLast; // MB/s
+                                
+                                speeds.push(currentSpeed);
+                                if (speeds.length > 6) speeds.shift();
+                                
+                                const avgSpeed = speeds.reduce((a, b) => a + b, 0) / speeds.length;
+                                const avgSpeedMbps = avgSpeed * 8; // Convert to Mbps
+                                speedDisplay.textContent = `${avgSpeedMbps.toFixed(2)} Mbps`;
+                                
+                                const remainingBytes = fileSize - bytesDownloaded;
+                                const eta = remainingBytes / (avgSpeed * 1024 * 1024);
+                                etaDisplay.textContent = `ETA: ${formatTime(eta * 1000)}`;
+                                
+                                lastTime = now;
+                                lastBytes = bytesDownloaded;
+                            }
+                            
+                            console.log(`Chunk ${chunkIndex + 1}/${totalChunks} complete (${formatFileSize(chunkSize)})`);
+                            return;
+                            
+                        } catch (error) {
+                            console.warn(`Chunk ${chunkIndex + 1} attempt ${attempt} failed:`, error.message);
+                            
+                            if (attempt === retries) {
+                                throw new Error(`Chunk ${chunkIndex + 1} failed after ${retries} attempts: ${error.message}`);
+                            }
+                            
+                            // Wait before retry
+                            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+                        }
+                    }
+                }
+                
+                // Download all chunks in parallel (limited concurrency)
+                const concurrency = 3;
+                for (let i = 0; i < totalChunks; i += concurrency) {
+                    const batch = [];
+                    for (let j = 0; j < concurrency && i + j < totalChunks; j++) {
+                        batch.push(downloadChunk(i + j));
+                    }
+                    await Promise.all(batch);
+                }
+                
+                // Reassemble file
+                savingMsg.textContent = 'Assembling file...';
+                const blob = new Blob(chunks.map(chunk => new Uint8Array(chunk)), { type: 'application/octet-stream' });
+                
+                // Download assembled file
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                a.remove();
+                
+                // Success
+                progressContainer.style.display = 'none';
+                clearInterval(downloadTimerInterval);
+                lastDownloadTime = Date.now() - startTime;
+                lastDownloadSize = blob.size;
+                timerDisplay.textContent = formatTime(lastDownloadTime);
+                
+                if (lastDownloadTime > 0 && lastDownloadSize > 0) {
+                    const mb = lastDownloadSize / 1024 / 1024;
+                    const sec = lastDownloadTime / 1000;
+                    const speedMBs = mb / sec; // MB/s
+                    const speedMbps = speedMBs * 8; // Convert to Mbps
+                    speedDisplay.textContent = `${speedMbps.toFixed(2)} Mbps (avg)`;
+                }
+                
+                console.log(`Chunked download complete: ${formatFileSize(lastDownloadSize)} in ${formatTime(lastDownloadTime)}`);
+                savingMsg.textContent = 'Download complete! Check your downloads folder.';
+                setTimeout(() => { savingMsg.textContent = ''; }, 3000);
+                
+                // Log download
+                await logDownload(fileName, lastDownloadSize, 'chunked', speedDisplay.textContent);
+                
+            } catch (error) {
+                console.error('Chunked download error:', error);
+                progressContainer.style.display = 'none';
+                clearInterval(downloadTimerInterval);
+                speedDisplay.textContent = '0.00 Mbps';
+                savingMsg.textContent = '';
+                alert(`Chunked download failed: ${error.message}`);
+            }
+        }
+
+        // 📊 Log download to backend
+        async function logDownload(fileName, fileSize, method, speed) {
+            try {
+                const connectionQuality = typeof detectConnectionQuality === 'function' ? await detectConnectionQuality() : 'unknown';
+                await fetch('/api/log-download', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        fileName,
+                        fileSize,
+                        method,
+                        contentType: 'application/octet-stream',
+                        connectionQuality,
+                        speed,
+                        userAgent: navigator.userAgent
+                    })
+                });
+            } catch (error) {
+                console.warn('Failed to log download:', error.message);
+            }
+        }
+
+        // On page load, set timers to last value or 00:00:00
+        window.onload = function() {
+            document.getElementById('uploadTimer').textContent = lastUploadTime ? formatTime(lastUploadTime) : '00:00:00';
+            document.getElementById('downloadTimer').textContent = lastDownloadTime ? formatTime(lastDownloadTime) : '00:00:00';
+            if (lastUploadTime > 0 && lastUploadSize > 0) {
+                const mb = lastUploadSize / 1024 / 1024;
+                const sec = lastUploadTime / 1000;
+                const speedMBs = mb / sec; // MB/s
+                const speedMbps = speedMBs * 8; // Convert to Mbps
+                document.getElementById('uploadSpeed').textContent = `${speedMbps.toFixed(2)} Mbps`;
+            } else {
+                document.getElementById('uploadSpeed').textContent = '0.00 Mbps';
+            }
+            if (lastDownloadTime > 0 && lastDownloadSize > 0) {
+                const mb = lastDownloadSize / 1024 / 1024;
+                const sec = lastDownloadTime / 1000;
+                const speedMBs = mb / sec; // MB/s
+                const speedMbps = speedMBs * 8; // Convert to Mbps
+                document.getElementById('downloadSpeed').textContent = `${speedMbps.toFixed(2)} Mbps`;
+            } else {
+                document.getElementById('downloadSpeed').textContent = '0.00 Mbps';
+            }
+        };
+
+        // Initial file list load
+        refreshFileList();
+
+        // Simple static password protection
+        (function() {
+            var password = 'wnet';
+            var entered = sessionStorage.getItem('wnet_auth');
+            if (entered !== password) {
+                while (true) {
+                    var input = prompt('Enter password to access this page:');
+                    if (input === null) {
+                        document.body.innerHTML = '<h2>Access denied.</h2>';
+                        throw new Error('Access denied');
+                    }
+                    if (input === password) {
+                        sessionStorage.setItem('wnet_auth', password);
+                        break;
+                    }
+                }
+            }
+        })();
+    </script>
+</body>
+</html> 

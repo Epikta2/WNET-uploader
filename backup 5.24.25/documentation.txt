@@ -1,0 +1,66 @@
+ssh -p 22 -i ~/.ssh/id_ed25519 root@192.241.137.246
+
+
+
+Clean bad files
+/root/abort_r2_uploads.sh
+
+
+scp -r -P 22 -i ~/.ssh/id_ed25519 /Volumes/ParkVIP/WNET/R2test root@192.241.137.246:/root/
+
+
+scp -P 22 -i ~/.ssh/id_ed25519 /Volumes/ParkVIP/WNET/R2test/masv/masv.html root@192.241.137.246:/root/R2test/masv/masv.html
+
+scp -P 22 -i ~/.ssh/id_ed25519 /Volumes/ParkVIP/WNET/R2test/masv/masv-agent.js root@192.241.137.246:/root/R2test/masv/masv-agent.js
+
+
+scp -P 22 -i ~/.ssh/id_ed25519 /Volumes/ParkVIP/WNET/R2test/masv/config/masv-config.json root@192.241.137.246:/root/R2test/masv/config/masv-config.json 
+
+
+
+scp -P 22 -i ~/.ssh/id_ed25519 /Volumes/ParkVIP/WNET/R2test/server.js root@192.241.137.246:/root/R2test/server.js
+
+scp -P 22 -i ~/.ssh/id_ed25519 /Volumes/ParkVIP/WNET/R2test/index.html root@192.241.137.246:/root/R2test/index.html
+
+Grab log from server to local
+scp -P 22 -i ~/.ssh/id_ed25519 root@192.241.137.246:/root/R2test/upload_failures.log /Volumes/ParkVIP/WNET/R2test/
+
+scp -P 22 -i ~/.ssh/id_ed25519 root@192.241.137.246:/root/R2test/upload_successes.log /Volumes/ParkVIP/WNET/R2test/
+
+scp -P 22 -i ~/.ssh/id_ed25519 root@192.241.137.246:/root/R2test/download_logs.log /Volumes/ParkVIP/WNET/R2test/
+
+
+
+Throttle speed test (terminal command: speediest)
+
+Slow (Rural/Legacy DSL)
+Speed: 2 Mbps (megabits per second) = 256 KB/s (kilobytes per second)
+  sudo dnctl pipe 1 config bw 5Mbit/s
+  sudo pfctl -E
+  echo "dummynet out proto tcp from any to any pipe 1" | sudo pfctl -f -
+
+
+Average (Typical US Home Broadband)
+Speed: 25 Mbps = 3.125 MB/s (megabytes per second)
+  sudo dnctl pipe 1 config bw 25Mbit/s
+  sudo pfctl -E
+  echo "dummynet out proto tcp from any to any pipe 1" | sudo pfctl -f -
+
+Fast (Urban Fiber/High-End Cable)
+Speed: 200 Mbps = 25 MB/s
+
+  sudo dnctl pipe 1 config bw 200Mbit/s
+  sudo pfctl -E
+  echo "dummynet out proto tcp from any to any pipe 1" | sudo pfctl -f -
+
+
+
+
+Remove throttle
+sudo pfctl -F all -f /etc/pf.conf
+sudo dnctl flush
+
+
+
+
+

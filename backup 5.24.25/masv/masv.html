@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WNET MASV Portal</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .container {
+            display: grid;
+            gap: 30px;
+        }
+        .section {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .masv-portal {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .status-section {
+            display: flex;
+            flex-direction: column;
+        }
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px;
+            margin: 5px 0;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        .status-healthy {
+            border-left: 4px solid #28a745;
+        }
+        .status-error {
+            border-left: 4px solid #dc3545;
+        }
+        .status-warning {
+            border-left: 4px solid #ffc107;
+        }
+        .logs-container {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            background: #f8f9fa;
+        }
+        .log-entry {
+            padding: 8px;
+            margin: 5px 0;
+            border-radius: 3px;
+            font-size: 14px;
+        }
+        .log-upload {
+            background: #d4edda;
+            border-left: 3px solid #28a745;
+        }
+        .log-download {
+            background: #d1ecf1;
+            border-left: 3px solid #17a2b8;
+        }
+        .log-error {
+            background: #f8d7da;
+            border-left: 3px solid #dc3545;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .refresh-btn {
+            background-color: #28a745;
+        }
+        .refresh-btn:hover {
+            background-color: #218838;
+        }
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+  
+    
+    <div class="container">
+        <!-- MASV Portal Section -->
+        <div class="section masv-portal">
+            <h2>MASV File Transfer</h2>
+            <p>Upload and download large video files securely</p>
+            
+            <!-- MASV Embed -->
+            <iframe 
+                src='https://wnet-poc.portal.massive.io/embed?email=&hidename=false&hidemessage=false' 
+                width='450' 
+                height='800' 
+                scrolling='yes' 
+                style='border: none; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);'>
+            </iframe>
+            
+            <!-- MASV Logo -->
+            <div style='width: 400px; margin-top: 20px;'>
+                <a href='https://massive.io/' target='_blank'>
+                    <img 
+                        src='https://massive.io/masv-logo-small.png' 
+                        style='margin:auto; display: block; margin-top: 20px; margin-bottom: 20px; width: 120px;' 
+                        alt='MASV Logo'
+                    />
+                </a>
+            </div>
+        </div>
+
+        <!-- Status and Logs Section -->
+        
+    </div>
+
+    <script>
+        let refreshInterval;
+
+        // Check agent status
+        async function checkAgentStatus() {
+            try {
+                const response = await fetch('http://localhost:3001/health');
+                const status = await response.json();
+                
+                updateAgentStatus(true, status);
+            } catch (error) {
+                console.error('Agent status check failed:', error);
+                updateAgentStatus(false, null);
+            }
+        }
+
+        // Update agent status display
+        function updateAgentStatus(isHealthy, statusData) {
+            const statusContainer = document.getElementById('agentStatus');
+            
+            if (isHealthy && statusData) {
+                statusContainer.innerHTML = `
+                    <div class="status-item status-healthy">
+                        <span>MASV Agent</span>
+                        <span>Online</span>
+                    </div>
+                    <div class="status-item ${statusData.config.s3Integration ? 'status-healthy' : 'status-warning'}">
+                        <span>R2 Integration</span>
+                        <span>${statusData.config.s3Integration ? 'Enabled' : 'Disabled'}</span>
+                    </div>
+                    <div class="status-item ${statusData.config.webhook ? 'status-healthy' : 'status-warning'}">
+                        <span>Webhook</span>
+                        <span>${statusData.config.webhook ? 'Enabled' : 'Disabled'}</span>
+                    </div>
+                `;
+            } else {
+                statusContainer.innerHTML = `
+                    <div class="status-item status-error">
+                        <span>MASV Agent</span>
+                        <span>Offline</span>
+                    </div>
+                    <div class="status-item status-error">
+                        <span>R2 Integration</span>
+                        <span>Unavailable</span>
+                    </div>
+                `;
+            }
+        }
+
+        // Load transfer logs
+        async function loadTransferLogs() {
+            try {
+                const response = await fetch('http://localhost:3001/logs/transfers');
+                const logs = await response.json();
+                
+                displayLogs(logs);
+            } catch (error) {
+                console.error('Failed to load transfer logs:', error);
+                const logsContainer = document.getElementById('logsContainer');
+                logsContainer.innerHTML = `
+                    <div class="log-entry log-error">
+                        Failed to load transfer logs: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // Display logs
+        function displayLogs(logs) {
+            const logsContainer = document.getElementById('logsContainer');
+            
+            if (!logs || logs.length === 0) {
+                logsContainer.innerHTML = `
+                    <div style="text-align: center; color: #666;">
+                        No transfer activity found
+                    </div>
+                `;
+                return;
+            }
+
+            const logsHtml = logs.reverse().map(log => {
+                const timestamp = new Date(log.timestamp).toLocaleString();
+                const logClass = log.type === 'upload' ? 'log-upload' : 
+                               log.type === 'download' ? 'log-download' : 'log-error';
+                
+                let details = '';
+                if (log.type === 'upload') {
+                    details = `Uploaded ${log.fileCount} file(s) - ${formatFileSize(log.totalSize || 0)}`;
+                } else if (log.type === 'download') {
+                    details = `Downloaded by ${log.downloadedBy || 'Unknown'}`;
+                }
+
+                return `
+                    <div class="log-entry ${logClass}">
+                        <div style="font-weight: bold;">${log.packageName || 'Unknown Package'}</div>
+                        <div style="font-size: 12px; color: #666;">${timestamp}</div>
+                        <div>${details}</div>
+                    </div>
+                `;
+            }).join('');
+
+            logsContainer.innerHTML = logsHtml;
+        }
+
+        // Clear logs display
+        function clearLogs() {
+            const logsContainer = document.getElementById('logsContainer');
+            logsContainer.innerHTML = `
+                <div style="text-align: center; color: #666;">
+                    Logs cleared. Click "Load Recent Transfers" to refresh.
+                </div>
+            `;
+        }
+
+        // Format file size
+        function formatFileSize(bytes) {
+            if (bytes >= 1024 * 1024 * 1024) {
+                return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+            } else if (bytes >= 1024 * 1024) {
+                return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+            } else if (bytes >= 1024) {
+                return (bytes / 1024).toFixed(2) + ' KB';
+            }
+            return bytes + ' bytes';
+        }
+
+        // Initialize page
+        window.onload = function() {
+            checkAgentStatus();
+            
+            // Set up auto-refresh for status
+            refreshInterval = setInterval(checkAgentStatus, 30000); // Check every 30 seconds
+        };
+
+        // Clean up interval on page unload
+        window.onbeforeunload = function() {
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+            }
+        };
+
+        // Simple password protection
+        (function() {
+            var password = 'wnet';
+            var entered = sessionStorage.getItem('wnet_auth');
+            if (entered !== password) {
+                while (true) {
+                    var input = prompt('Enter password to access this page:');
+                    if (input === null) {
+                        document.body.innerHTML = '<h2>Access denied.</h2>';
+                        throw new Error('Access denied');
+                    }
+                    if (input === password) {
+                        sessionStorage.setItem('wnet_auth', password);
+                        break;
+                    }
+                }
+            }
+        })();
+    </script>
+</body>
+</html> 

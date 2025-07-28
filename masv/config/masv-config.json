@@ -1,0 +1,33 @@
+{
+  "masv": {
+    "portalUrl": "https://wnet-poc.portal.massive.io",
+    "embed": {
+      "url": "https://wnet-poc.portal.massive.io/embed",
+      "params": {
+        "email": "",
+        "hidename": "false",
+        "hidemessage": "false"
+      },
+      "width": 450,
+      "height": 800
+    }
+  },
+  "s3Integration": {
+    "enabled": true,
+    "endpoint": "https://548a6dfe061f53d1fd79a5ef3ec8975e.r2.cloudflarestorage.com",
+    "bucket": "wnet-storage",
+    "region": "auto",
+    "accessKeyId": "${R2_ACCESS_KEY_ID}",
+    "secretAccessKey": "${R2_SECRET_ACCESS_KEY}",
+    "syncPath": "/masv-uploads/"
+  },
+  "webhook": {
+    "enabled": true,
+    "endpoint": "/api/masv/webhook",
+    "events": ["upload.completed", "download.completed"]
+  },
+  "logging": {
+    "level": "info",
+    "file": "./logs/masv-agent.log"
+  }
+} 
