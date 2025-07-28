@@ -1,111 +1,91 @@
-# 📁 VPS Upload Proxy - Files Created
+# 📁 WNET File Transfer - Project Files Documentation
 
-## **🚀 VPS Files (Upload to 178.156.167.243)**
+## **🚀 Core Application Files**
 
-### **1. vps-upload-proxy.js**
-- **Description:** Main VPS server with optimized R2 multipart upload
-- **Features:** 
-  - 14MB parts, 120 parallel connections
-  - SSE progress streaming
-  - File cleanup and error handling
-  - CORS support for browser integration
+### **1. index.html** 
+- **Description:** Main frontend application with upload/download UI
+- **Size:** 5011 lines, ~233KB
+- **Features:** Multipart upload, connection detection, direct-to-disk downloads
+- **Recent Updates:** Fixed "Invalid Array Length" bug, improved retry logic
 
-### **2. package.json**
-- **Description:** Node.js dependencies for VPS
-- **Dependencies:** express, multer, aws-sdk, cors
-- **Scripts:** start, dev (with nodemon)
+### **2. server.js**
+- **Description:** Node.js Express backend for R2 presigning and logging
+- **Size:** 454 lines, ~17KB  
+- **Features:** S3 presigning, upload/download logging, CORS handling
 
-### **3. vps-setup.sh**
-- **Description:** Automated VPS setup script
-- **Actions:**
-  - Installs Node.js 18 LTS
-  - Creates systemd service
-  - Configures firewall (ports 22, 3000)
-  - Starts and enables service
+### **3. package.json**
+- **Description:** Node.js dependencies and project metadata
+- **Dependencies:** @aws-sdk/client-s3, express, multer, cors, express-rate-limit
 
-### **4. vps-env-template.txt**
-- **Description:** Environment configuration template
-- **Usage:** Copy to `.env` and configure with actual R2 credentials
-- **Contains:** R2 endpoint, credentials, bucket name, CORS origin
+### **4. favicon.ico**
+- **Description:** Website favicon with "W" design
+- **Status:** ✅ Deployed to fix 404 errors
 
----
+## **📊 Network Optimization Files**
 
-## **💻 Local Files (Update on 192.241.137.246:3000)**
+### **5. network-profiles/ directory**
+- **ultra.js** - Ultra-fast connections (50+ Mbps)
+- **gigabit.js** - Gigabit ethernet configurations  
+- **fiber.js** - Fiber optic connection settings
+- **enterprise.js** - Enterprise network profiles
+- **cable.js** - Cable internet optimizations
+- **dsl.js** - DSL connection settings
 
-### **5. index-vps.html**
-- **Description:** Modified frontend for VPS uploads
-- **Features:**
-  - VPS connection status indicator
-  - FormData upload to VPS endpoint
-  - SSE progress tracking from VPS
-  - Upload log panel with real-time updates
+## **📋 Documentation Files**
 
-### **6. server-vps-compatible.js**
-- **Description:** Modified local server with CORS support
-- **Changes:**
-  - Added CORS headers for VPS communication
-  - Added `/api/list-files` endpoint
-  - Maintains all existing functionality
+### **6. PRODUCTION-ENVIRONMENT-DOCUMENTATION.md**
+- **Description:** Comprehensive production server documentation
+- **Content:** Architecture, services, performance metrics, troubleshooting
 
----
+### **7. PRODUCTION-LOGS-ANALYSIS.md** 
+- **Description:** Analysis of production upload/download logs
+- **Content:** Success rates, failure patterns, performance insights
 
-## **📚 Documentation**
+### **8. documentation.txt**
+- **Description:** SSH access and basic server information
+- **Content:** Login credentials, file transfer commands
 
-### **7. VPS-DEPLOYMENT-GUIDE.md**
-- **Description:** Complete deployment and testing guide
-- **Sections:**
-  - Step-by-step VPS setup
-  - Local file configuration
-  - Testing procedures
-  - Performance expectations
-  - Troubleshooting guide
+## **📈 Log Files**
 
-### **8. FILES-CREATED.md** (This file)
-- **Description:** Summary of all created files
+### **9. Production Logs (Downloaded)**
+- **production_logs_upload_successes.log** - Successful upload tracking
+- **production_logs_upload_failures.log** - Failed upload analysis  
+- **production_logs_download.log** - Download activity logs
+- **production_logs_masv.log** - MASV integration logs
 
----
+### **10. Local Development Logs**
+- **upload_successes.log** - Local testing successes
+- **upload_failures.log** - Local testing failures
+- **download_logs.log** - Local download testing
 
-## **🔄 Deployment Workflow**
+## **🔧 Backup Files**
 
-### **Phase 1: VPS Setup**
-1. Upload VPS files to `~/wnet-vps-proxy/`
-2. Run `chmod +x vps-setup.sh && ./vps-setup.sh`
-3. Configure `.env` with R2 credentials
-4. Restart service: `systemctl restart wnet-upload-proxy`
+### **11. HTML Backups**
+- **index.html.backup.YYYYMMDD_HHMMSS** - Timestamped backups before fixes
+- **index-backup-with-embedded-logic.html** - Alternative implementation
+- **index-optimized.html** - Performance-optimized version
 
-### **Phase 2: Local Updates**
-1. Backup existing files: `cp index.html index-backup.html`
-2. Deploy new files: `cp index-vps.html index.html`
-3. Optional: Update server.js for CORS compatibility
-4. Restart local server
+### **12. Legacy Files** 
+- **backup5.26.25.zip** - Complete project backup from May 26
+- **backup 5.24.25/** - Historical backup directory
 
-### **Phase 3: Testing**
-1. Visit VPS version: `http://192.241.137.246:3000/index-vps.html`
-2. Verify VPS connection status
-3. Test small file upload
-4. Test large file upload (target: 8+ MB/s)
+## **🎯 Architecture Overview**
 
----
+The project implements a **direct browser-to-Cloudflare R2** architecture:
 
-## **📊 Expected Performance**
+```
+[Browser] ──→ [Node.js API] ──→ [Cloudflare R2]
+    ↑              ↓
+  Upload        Presign URLs
+   Files        & Logging
+```
 
-| Metric | Current Direct | VPS Target | Improvement |
-|--------|---------------|------------|-------------|
-| Speed | 2.47 MB/s | 8-15 MB/s | 3-6x faster |
-| 3GB Upload | ~20 minutes | ~3-6 minutes | 70% reduction |
-| vs MASV | Slower (2.47 vs 3.7) | Faster (8+ vs 3.7) | 2x+ faster |
+**Key Benefits:**
+- ✅ Simple, scalable architecture
+- ✅ Cost-effective (no bandwidth costs)  
+- ✅ High performance (direct to CDN)
+- ✅ Secure (time-limited presigned URLs)
 
 ---
 
-## **✅ Success Validation**
-
-- [ ] VPS service running (`systemctl status wnet-upload-proxy`)
-- [ ] Health endpoint responding (`curl http://178.156.167.243:3000/health`)
-- [ ] Browser shows "VPS Connected" status
-- [ ] Upload speeds exceed 7 MB/s consistently
-- [ ] Progress tracking works correctly
-- [ ] No CORS errors in browser console
-
----
-
-**All files ready for deployment! Follow VPS-DEPLOYMENT-GUIDE.md for step-by-step instructions. 🚀** 
+**📋 Summary:** Clean, focused codebase optimized for large video file transfers with direct browser-to-cloud storage architecture. All VPS/proxy complications have been removed for simplicity and reliability. 

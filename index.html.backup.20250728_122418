@@ -1500,8 +1500,8 @@
         function logPartError(partNumber, attempt, status, error, delay = null) {
             const errorType = status || error.code || error.name || 'network';
             const logMessage = delay ? 
-                `⚠️ Part ${partNumber} retry ${attempt}/10 in ${(delay/1000).toFixed(1)}s due to: ${errorType}` :
-                `❌ Part ${partNumber} failed after 10 retries. Last error: ${errorType}`;
+                `⚠️ Part ${partNumber} retry ${attempt}/5 in ${(delay/1000).toFixed(1)}s due to: ${errorType}` :
+                `❌ Part ${partNumber} failed after 5 retries. Last error: ${errorType}`;
             
             console.warn(logMessage);
             
@@ -1516,7 +1516,7 @@
             
             // Also log to existing retry tracking
             if (delay) {
-                performanceTracker.logRetry(partNumber, attempt, 10, delay, errorType);
+                performanceTracker.logRetry(partNumber, attempt, 5, delay, errorType);
             }
         }
 
@@ -2248,7 +2248,7 @@
                     // Step 4: Upload part with retry logic
                     let etag = null;
                     let attempt = 0;
-                    const maxAttempts = 10; // 🔧 FIX: Increased from 5 to 10 for network timeout issues
+                    const maxAttempts = 5; // Increased from 3 to 5 for video files
 
                     while (attempt < maxAttempts && !etag && !errorOccurred && !isUploadCancelled) {
                         attempt++;

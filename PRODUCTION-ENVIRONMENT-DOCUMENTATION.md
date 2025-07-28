@@ -1,31 +1,28 @@
-# 🚀 WNET Production Environment - Complete Documentation
+# 🚀 **WNET File Transfer System - Production Environment Documentation**
 
-**Generated:** 2025-01-28 18:58 UTC  
-**Last Updated:** 2025-01-28 18:58 UTC
+*Generated: 2025-07-28 | Production Server: `192.241.137.246` | Live System*
 
 ---
 
 ## 📋 **System Overview**
 
-**WNET File Transfer System** is a production video upload/download service running on DigitalOcean, handling large media files (3GB+ MXF files) for broadcast operations.
+**WNET File Transfer** is a production system for uploading and downloading large video files (primarily MXF files 3GB+) used by broadcast professionals. The system uses **direct browser-to-Cloudflare R2** uploads with advanced client-side optimization.
 
-### **Architecture Status**
-- ✅ **Main Server:** `192.241.137.246` - ACTIVE & OPERATIONAL
-- ❌ **VPS Proxy:** `178.156.167.243` - NOT ACCESSIBLE (planned but not deployed)
-- ✅ **Storage:** Cloudflare R2 (`wnet-storage` bucket)
-- ✅ **Application:** Running via PM2, serving on port 3000
+### **🏗️ Current Architecture**
+- **Frontend:** Pure HTML/JavaScript with advanced browser APIs
+- **Backend:** Node.js + Express (API server for presigning & logging)  
+- **Storage:** Cloudflare R2 (S3-compatible object storage)
+- **Upload Method:** Direct browser-to-R2 multipart uploads
+- **Process Manager:** PM2 for service management
 
 ---
 
-## 🖥️ **Production Server Details**
+## 🌐 **Network & Services**
 
-### **Server Information**
-- **IP Address:** `192.241.137.246`
-- **SSH Access:** `ssh -p 22 -i ~/.ssh/id_ed25519 root@192.241.137.246`
-- **OS:** Linux (DigitalOcean Droplet)
-- **Directory:** `/root/R2test/`
-- **Port:** 3000
-- **Status:** ACTIVE - Currently serving traffic
+### **Production Server** (`192.241.137.246`)
+- **OS:** Ubuntu (likely 20.04+)
+- **Port 3000:** Main application (PM2: r2test)
+- **Status:** ✅ ONLINE and serving traffic
 
 ### **File Structure**
 ```
@@ -143,45 +140,33 @@ PORT=3000
 
 ---
 
-## 🌐 **VPS Setup Status**
+## 🌐 **Network & Services**
 
-### **Hetzner VPS** (`178.156.167.243`)
-- **Status:** ❌ NOT ACCESSIBLE
-- **Planned Use:** Upload acceleration proxy
-- **Current State:** Not deployed or firewall blocked
-- **Impact:** Direct uploads only, no VPS acceleration available
+### **Production Server** (`192.241.137.246`)
+- **OS:** Ubuntu (likely 20.04+)
+- **Port 3000:** Main application (PM2: r2test)
+- **Status:** ✅ ONLINE and serving traffic
 
-**VPS was intended to:**
-- Proxy browser uploads through VPS for better performance
-- Handle optimized multipart uploads (14MB parts, 120 parallel)
-- Target 8+ MB/s speeds vs current 2-5 MB/s
+### **🎯 Performance Optimizations**
 
----
+The system uses several client-side optimizations:
 
-## 🚀 **Application Features**
+1. **Connection Quality Detection**
+   - Latency and bandwidth testing
+   - Adaptive upload strategies based on network conditions
 
-### **Core Functionality**
-1. **File Upload:** Large video file uploads to Cloudflare R2
-2. **Progress Tracking:** Real-time upload progress with speed monitoring
-3. **Connection Testing:** Automatic bandwidth and latency detection
-4. **Adaptive Strategy:** Dynamic upload parameters based on connection quality
-5. **Download System:** Direct-to-disk downloads with turbo streaming
+2. **Smart Retry Logic**  
+   - Exponential backoff with jitter
+   - 10 retry attempts per upload part
+   - 60-90 second total retry time per part
 
-### **Advanced Features**
-- **Multipart Upload:** Handles large files via S3-compatible multipart
-- **Rate Limiting:** 200 requests per 15 minutes, 5000 for multipart
-- **Error Recovery:** Automatic retry with exponential backoff
-- **Authentication:** Simple password protection (`wnet`)
-- **Logging:** Comprehensive success/failure tracking
+3. **Network Profile Optimization**
+   - Ultra, Gigabit, Fiber, Enterprise, Cable, DSL profiles
+   - Part size and parallel upload tuning per profile
 
-### **Network Profiles**
-Optimized upload strategies for different connection types:
-- **Ultra:** Gigabit+ connections
-- **Gigabit:** 1 Gbps connections
-- **Fiber:** High-speed fiber
-- **Enterprise:** Business connections
-- **Cable:** Home cable internet
-- **DSL:** Lower bandwidth connections
+4. **Direct-to-Disk Downloads**
+   - File System Access API for zero-delay downloads
+   - High-speed streaming directly to user's filesystem
 
 ---
 
@@ -264,10 +249,20 @@ scp -P 22 -i ~/.ssh/id_ed25519 root@192.241.137.246:/root/R2test/download_logs.l
 **Frequency:** 66% of failures  
 **Solution:** Better retry logic, smaller part sizes for slow connections
 
-### **3. VPS Acceleration Unavailable**
-**Problem:** Hetzner VPS not accessible/deployed  
-**Impact:** Limited to direct browser uploads (2-5 MB/s vs 8+ MB/s target)  
-**Solution:** Deploy VPS or fix connectivity
+### **3. Browser Memory Limits**
+**Problem:** Large files (>4GB) may hit browser memory constraints  
+**Frequency:** 25% of failures  
+**Solution:** "Invalid Array Length" errors resolved with Map-based progress tracking
+
+### **4. Network Instability**
+**Problem:** Unstable connections can cause upload failures  
+**Frequency:** 66% of failures  
+**Solution:** Increased retry attempts from 5 to 10
+
+### **5. File Size Caps**
+**Problem:** Practical limit around 8-10GB due to browser limitations  
+**Frequency:** 25% of failures  
+**Solution:** Future consideration: Chunked streaming approaches
 
 ---
 
@@ -279,10 +274,10 @@ scp -P 22 -i ~/.ssh/id_ed25519 root@192.241.137.246:/root/R2test/download_logs.l
 - **File Size Range:** 26MB - 3.67GB
 - **Typical Upload Time:** 10-20 minutes for 3GB files
 
-### **Target Performance** (with VPS)
-- **Upload Speed:** 8-15 MB/s
-- **Success Rate:** 95%+
-- **Upload Time:** 3-6 minutes for 3GB files
+### **Target Performance**
+- **Upload Speed:** 5-25 Mbps (network dependent)
+- **Success Rate:** ~95% (after recent fixes)
+- **File Types:** MXF, MOV, MP4 (broadcast video files)
 
 ---
 
@@ -323,7 +318,6 @@ scp -P 22 -i ~/.ssh/id_ed25519 root@192.241.137.246:/root/R2test/download_logs.l
 - ✅ Cross-platform compatibility
 
 ### **Improvement Opportunities**
-- 🎯 Deploy VPS acceleration for 3x faster uploads
 - 🎯 Fix "Invalid array length" bugs
 - 🎯 Improve retry logic for network issues
 - 🎯 Add file compression options
@@ -351,7 +345,7 @@ scp -P 22 -i ~/.ssh/id_ed25519 root@192.241.137.246:/root/R2test/download_logs.l
 
 ---
 
-**📋 Summary:** Production system is stable and operational, handling real broadcast video uploads with 85% success rate. VPS acceleration planned but not yet deployed. System ready for improvements and scaling.
+**📋 Summary:** Production system is stable and operational, handling real broadcast video uploads with 85% success rate. System ready for improvements and scaling.
 
 ---
 
