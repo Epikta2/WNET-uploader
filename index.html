@@ -1438,6 +1438,7 @@
                 
                 // Stage 1: Conservative start - use existing logic as baseline
                 console.log('📡 Stage 1: Basic detection...');
+                updateUploadProgress('Testing connection speed (Stage 1/4)...', 15);
                 const basicResult = await detectConnectionQuality();
                 bestSpeed = (basicResult.bandwidth || 2.5) * 8; // Convert to Mbps
                 confidence = 'basic';
@@ -1447,9 +1448,10 @@
                     return { ...basicResult, progressive: false, confidence };
                 }
                 
-                // Stage 2: If looking promising, larger single test  
+                                // Stage 2: If looking promising, larger single test
                 if (bestSpeed > 40 && Date.now() - startTime < maxTestDuration - 3000) {
                     console.log('📡 Stage 2: Enhanced detection (2MB test)...');
+                    updateUploadProgress('Testing connection speed (Stage 2/4)...', 35);
                     const stage2Speed = await performProgressiveSpeedTest(2 * 1024 * 1024, 1, 'stage2');
                     if (stage2Speed && stage2Speed > bestSpeed) {
                         bestSpeed = stage2Speed;
@@ -1461,6 +1463,7 @@
                 // Stage 3: If very promising, parallel test
                 if (bestSpeed > 80 && Date.now() - startTime < maxTestDuration - 2000) {
                     console.log('📡 Stage 3: Parallel detection (5MB, 2 streams)...');
+                    updateUploadProgress('Testing connection speed (Stage 3/4)...', 55);
                     const stage3Speed = await performProgressiveSpeedTest(5 * 1024 * 1024, 2, 'stage3');
                     if (stage3Speed && stage3Speed > bestSpeed) {
                         bestSpeed = stage3Speed;
@@ -1472,6 +1475,7 @@
                 // Stage 4: If exceptional, full parallel test
                 if (bestSpeed > 120 && Date.now() - startTime < maxTestDuration - 1000) {
                     console.log('📡 Stage 4: High-speed detection (10MB, 3 streams)...');
+                    updateUploadProgress('Testing connection speed (Stage 4/4)...', 75);
                     const stage4Speed = await performProgressiveSpeedTest(10 * 1024 * 1024, 3, 'stage4');
                     if (stage4Speed && stage4Speed > bestSpeed) {
                         bestSpeed = stage4Speed;
@@ -1783,6 +1787,13 @@
         }
 
         async function uploadFile() {
+            // 🚀 IMMEDIATE UI FEEDBACK: Prevent double-clicks and show activity
+            const uploadBtn = document.getElementById('sendButton');
+            const originalText = uploadBtn.textContent;
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = 'Analyzing Connection...';
+            uploadBtn.style.backgroundColor = '#FFA500';
+            
             // Check for selected files first, then fallback to file input
             let file;
             if (selectedFiles && selectedFiles.length > 0) {
@@ -1793,13 +1804,25 @@
             }
 
             if (!file) {
+                // Restore button state on error
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = originalText;
+                uploadBtn.style.backgroundColor = '';
                 alert('Please select a file first');
                 return;
             }
 
             if (!isValidVideoFile(file)) {
+                // Restore button state on error  
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = originalText;
+                uploadBtn.style.backgroundColor = '';
                 return;
             }
+
+            // Show progress section immediately
+            showProgressSection(file.name);
+            updateUploadProgress('Detecting optimal upload settings...', 0);
 
             // 🚀 ADAPTIVE: Detect connection quality with progressive testing
             console.log('📡 Starting adaptive connection quality detection...');
@@ -1807,19 +1830,25 @@
             try {
                 connectionInfo = await detectConnectionQualityProgressive();
                 console.log(`🎯 ADAPTIVE: Using ${connectionInfo.progressive ? 'progressive' : 'basic'} detection (${connectionInfo.confidence})`);
+                
+                // Update UI with connection results
+                updateUploadProgress(`Connection: ${connectionInfo.actualBandwidthTest?.toFixed(1) || '~'} Mbps detected`, 5);
+                uploadBtn.textContent = 'Starting Upload...';
+                uploadBtn.style.backgroundColor = '#28a745';
+                
             } catch (error) {
                 console.warn('⚠️ Progressive detection failed, using basic fallback:', error);
                 connectionInfo = await detectConnectionQuality();
                 connectionInfo.progressive = false;
                 connectionInfo.confidence = 'fallback';
+                updateUploadProgress('Connection detected, starting upload...', 5);
             }
             console.log(`Connection quality: ${connectionInfo.type}, Chunk size: ${currentChunkSize / (1024 * 1024)}MB`);
 
             // Generate a unique filename with timestamp
             const uniqueFilename = getTimestampedFilename(file.name);
 
-            // Show progress section
-            showProgressSection(file.name);
+            // Progress section already shown above
 
             let startTime = Date.now();
             if (uploadTimerInterval) clearInterval(uploadTimerInterval);
@@ -1828,9 +1857,16 @@
                 document.getElementById('timeRemaining').textContent = formatTime(elapsed);
             }, 100);
 
+            // Update UI before starting actual upload
+            updateUploadProgress('Starting upload...', 10);
+
             // Use multipart upload for files over 1GB (1 * 1024 * 1024 * 1024 bytes)
             if (file.size > 1 * 1024 * 1024 * 1024) {
                 await multipartUpload(file, uniqueFilename, null, null, null, null, startTime);
+                // 🔄 RESTORE BUTTON: Re-enable after upload completes
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = originalText;
+                uploadBtn.style.backgroundColor = '';
                 return;
             }
 
