@@ -278,7 +278,7 @@ function createEnterpriseAdaptiveMonitor(strategy, performanceTracker, context) 
                 }
                 
                 // 🛑 NO-PROGRESS WATCHDOG: Detect stalled uploads
-                const timeSinceProgress = now - lastProgress;
+                const timeSinceProgress = Date.now() - lastProgress;
                 if (timeSinceProgress > ENTERPRISE_PROFILE.noProgressTimeout) {
                     console.error(`🛑 ENTERPRISE NO-PROGRESS DETECTED: ${(timeSinceProgress/1000).toFixed(1)}s since last progress — triggering soft restart or throttle`);
                     if (context.maxParallel > ENTERPRISE_PROFILE.minParallel) {
