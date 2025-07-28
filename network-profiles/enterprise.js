@@ -209,7 +209,7 @@ function createEnterpriseAdaptiveMonitor(strategy, performanceTracker, context) 
                     // Enhanced reset logic with hysteresis
                     if (timeSincePeak > 120000) { // 120s for ENTERPRISE
                         if (peakResetState === 'dropping') {
-                            if (now - lastScaleDown > ENTERPRISE_PROFILE.scaleDownCooldown) {
+                            if (Date.now() - lastScaleDown > ENTERPRISE_PROFILE.scaleDownCooldown) {
                                 context.maxParallel = Math.max(context.maxParallel - ENTERPRISE_PROFILE.throttleAmount, ENTERPRISE_PROFILE.minParallel);
                                 console.warn(`⚠️ ENTERPRISE: Reducing parallel to ${context.maxParallel} due to sustained drop`);
                                 lastScaleDown = now;
@@ -247,18 +247,18 @@ function createEnterpriseAdaptiveMonitor(strategy, performanceTracker, context) 
                     const now = Date.now();
                     const avgSpeedPerPart = smoothedPartSpeed;
 
-                    if (avgSpeedPerPart >= ENTERPRISE_PROFILE.rampUpThreshold && context.maxParallel < strategy.maxParallelCap && now - lastParallelAdjustment > ENTERPRISE_PROFILE.scaleUpCooldown) {
+                    if (avgSpeedPerPart >= ENTERPRISE_PROFILE.rampUpThreshold && context.maxParallel < strategy.maxParallelCap && Date.now() - lastParallelAdjustment > ENTERPRISE_PROFILE.scaleUpCooldown) {
                         context.maxParallel++;
-                        lastParallelAdjustment = now;
+                        lastParallelAdjustment = Date.now();
                         console.log(`📈 ENTERPRISE SCALE UP: Increased parallel to ${context.maxParallel}`);
                         performanceTracker.updateStrategy(strategy.partSize, context.maxParallel, Math.ceil(context.file.size / strategy.partSize));
                     } else if (avgSpeedPerPart <= ENTERPRISE_PROFILE.rampDownThreshold) {
                         lowSpeedSamples++;
-                        if (lowSpeedSamples >= ENTERPRISE_PROFILE.lowSpeedSampleThreshold && now - lastScaleDown > ENTERPRISE_PROFILE.scaleDownCooldown) {
+                        if (lowSpeedSamples >= ENTERPRISE_PROFILE.lowSpeedSampleThreshold && Date.now() - lastScaleDown > ENTERPRISE_PROFILE.scaleDownCooldown) {
                             context.maxParallel = Math.max(context.maxParallel - ENTERPRISE_PROFILE.throttleAmount, ENTERPRISE_PROFILE.minParallel);
                             lowSpeedSamples = 0;
-                            lastScaleDown = now;
-                            lastParallelAdjustment = now;
+                                            lastScaleDown = Date.now();
+                lastParallelAdjustment = Date.now();
                             console.log(`📉 ENTERPRISE SCALE DOWN: Reduced parallel to ${context.maxParallel}`);
                             performanceTracker.updateStrategy(strategy.partSize, context.maxParallel, Math.ceil(context.file.size / strategy.partSize));
                         }
@@ -270,8 +270,8 @@ function createEnterpriseAdaptiveMonitor(strategy, performanceTracker, context) 
                 // 🧟 ZOMBIE PART KILLER: Kill slow parts that are dragging performance
                 if (performanceTracker.partTimes && performanceTracker.partTimes.length > 0) {
                     performanceTracker.partTimes.forEach(part => {
-                        if (part.speed < ENTERPRISE_PROFILE.minPartSpeed && (now - part.timestamp) > ENTERPRISE_PROFILE.minPartTimeout) {
-                            console.warn(`🧟 ENTERPRISE ZOMBIE KILLER: Part ${part.partNumber} too slow (${part.speed.toFixed(2)} MB/s < ${ENTERPRISE_PROFILE.minPartSpeed} MB/s for ${((now - part.timestamp)/1000).toFixed(1)}s)`);
+                        if (part.speed < ENTERPRISE_PROFILE.minPartSpeed && (Date.now() - part.timestamp) > ENTERPRISE_PROFILE.minPartTimeout) {
+                            console.warn(`🧟 ENTERPRISE ZOMBIE KILLER: Part ${part.partNumber} too slow (${part.speed.toFixed(2)} MB/s < ${ENTERPRISE_PROFILE.minPartSpeed} MB/s for ${((Date.now() - part.timestamp)/1000).toFixed(1)}s)`);
                             // Note: Actual part killing would need to be implemented in the main upload logic
                         }
                     });
@@ -286,7 +286,7 @@ function createEnterpriseAdaptiveMonitor(strategy, performanceTracker, context) 
                         console.log(`🔄 ENTERPRISE STALL RECOVERY: Reduced to ${context.maxParallel} parallel`);
                         performanceTracker.updateStrategy(strategy.partSize, context.maxParallel, Math.ceil(context.file.size / strategy.partSize));
                     }
-                    lastProgress = now; // Reset timer
+                    lastProgress = Date.now(); // Reset timer
                 }
                 
                 // 🚨 EMERGENCY RESET: If throughput falls below emergency threshold
@@ -307,7 +307,7 @@ function createEnterpriseAdaptiveMonitor(strategy, performanceTracker, context) 
                 } else {
                     emergencyResetCounter = 0; // Reset counter if performance is good
                     if (recentParts.length > 0) {
-                        lastProgress = now; // Update progress timer when parts are completing
+                        lastProgress = Date.now(); // Update progress timer when parts are completing
                     }
                 }
                 
