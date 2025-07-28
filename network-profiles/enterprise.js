@@ -8,9 +8,9 @@ const ENTERPRISE_PROFILE = {
     
     // Core Performance - enterprise-grade (50-150 Mbps)
     partSize: 40 * 1024 * 1024, // 40MB parts - optimized for stable business-class connections
-    parallel: 12, // MAXIMUM aggressive parallel for enterprise speeds
-    maxCap: 16, // MAXIMUM cap - no throttling
-    minParallel: 10, // High minimum for sustained performance
+    parallel: 10, // OPTIMIZED parallel for stable high performance
+    maxCap: 14, // Balanced cap for sustained speeds
+    minParallel: 8, // Balanced minimum for stability
     targetSpeed: 100, // Target 75-120 Mbps range (ENTERPRISE tier)
     
     // Adaptive Ramp Logic

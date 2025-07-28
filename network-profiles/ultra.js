@@ -8,9 +8,9 @@ const ULTRA_PROFILE = {
     
     // 🚀 Performance - Optimal balance: Fewer connections, larger parts, instant saturation
     partSize: 200 * 1024 * 1024, // 200MB parts - OPTIMIZED for sustained 140+ Mbps performance
-    parallel: 18, // MAXIMUM AGGRESSIVE - push limits for peak performance
-    maxCap: 24, // MAXIMUM scaling headroom - no limits
-    minParallel: 16, // High minimum for sustained speed
+    parallel: 16, // OPTIMIZED AGGRESSIVE - balanced for sustained performance
+    maxCap: 20, // Balanced scaling headroom for stability
+    minParallel: 12, // Balanced minimum for sustained speed
     targetSpeed: 150, // Target 150 Mbps sustained (proven achievable)
     
     // 📈 Adaptive thresholds (optimized for 150MB parts - PROVEN OPTIMAL)
