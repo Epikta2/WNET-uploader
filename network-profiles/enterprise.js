@@ -8,9 +8,9 @@ const ENTERPRISE_PROFILE = {
     
     // Core Performance - enterprise-grade (50-150 Mbps)
     partSize: 40 * 1024 * 1024, // 40MB parts - optimized for stable business-class connections
-    parallel: 8, // Optimized parallel count for better throughput
-    maxCap: 12, // Higher cap for peak performance
-    minParallel: 4, // Minimum parallel for enterprise stability
+    parallel: 12, // MAXIMUM aggressive parallel for enterprise speeds
+    maxCap: 16, // MAXIMUM cap - no throttling
+    minParallel: 10, // High minimum for sustained performance
     targetSpeed: 100, // Target 75-120 Mbps range (ENTERPRISE tier)
     
     // Adaptive Ramp Logic
@@ -22,8 +22,8 @@ const ENTERPRISE_PROFILE = {
     staggerDelay: 75, // 50-75ms stagger delay for enterprise
     
     warmupCount: 20, // High warm-up for enterprise
-    scaleUpCooldown: 8000, // 8s cooldown between scale-ups (faster scaling)
-    scaleDownCooldown: 45000, // 45s cooldown for scale-downs (enterprise stability)
+    scaleUpCooldown: 2000, // 2s cooldown between scale-ups (AGGRESSIVE)
+    scaleDownCooldown: 10000, // 10s cooldown for scale-downs (minimal delays)
     lowSpeedSampleThreshold: 5, // Require 5 samples before scaling down
     
     // Degradation Recovery
@@ -33,7 +33,7 @@ const ENTERPRISE_PROFILE = {
     // Sweet Spot Protection
     enableSweetSpotProtection: true,
     peakDetectionThreshold: 150, // Mbps threshold for peak detection (higher to allow ULTRA upgrades)
-    sweetSpotProtectionDuration: 30000, // 30s protection period (shorter for adaptive upgrades)
+    sweetSpotProtectionDuration: 5000, // 5s protection period (MINIMAL blocking)
     
     // Stall Protection
     minPartSpeed: 0.5, // MB/s - below this is considered slow for enterprise

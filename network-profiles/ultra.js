@@ -8,9 +8,9 @@ const ULTRA_PROFILE = {
     
     // 🚀 Performance - Optimal balance: Fewer connections, larger parts, instant saturation
     partSize: 200 * 1024 * 1024, // 200MB parts - OPTIMIZED for sustained 140+ Mbps performance
-    parallel: 14, // OPTIMIZED COUNT - better for 140+ Mbps sustained
-    maxCap: 20, // More scaling headroom for peak performance
-    minParallel: 10, // Reasonable minimum
+    parallel: 18, // MAXIMUM AGGRESSIVE - push limits for peak performance
+    maxCap: 24, // MAXIMUM scaling headroom - no limits
+    minParallel: 16, // High minimum for sustained speed
     targetSpeed: 150, // Target 150 Mbps sustained (proven achievable)
     
     // 📈 Adaptive thresholds (optimized for 150MB parts - PROVEN OPTIMAL)
@@ -20,8 +20,8 @@ const ULTRA_PROFILE = {
     
     // 🔄 Warm-up / cooldown (high-speed tuning)
     warmupCount: 20, // Optimal warm-up for 150MB parts
-    scaleUpCooldown: 750, // 0.75s ramp interval (faster scaling for high speeds)
-    scaleDownCooldown: 15000, // 15s freeze after lock (stable response)
+    scaleUpCooldown: 250, // 0.25s ramp interval (AGGRESSIVE scaling)
+    scaleDownCooldown: 5000, // 5s freeze after lock (minimal delays)
     lowSpeedSampleThreshold: 3, // 3 samples needed (balanced response)
     rampStep: 4, // Increase by 4 parts per interval (optimal for 150MB parts)
     
@@ -32,7 +32,7 @@ const ULTRA_PROFILE = {
     // 🔐 Sweet spot protection (IMMEDIATE LOCK for proven 127+ Mbps)
     enableSweetSpotProtection: true,
     peakDetectionThreshold: 100, // Lower to 100 Mbps to lock immediately at 127 Mbps
-    sweetSpotProtectionDuration: 5000, // 5s freeze after lock (faster response)
+    sweetSpotProtectionDuration: 1000, // 1s freeze after lock (MINIMAL protection)
     strongSampleThresholdMbps: 5.0, // Lower threshold: >5.0 Mbps per part (more sensitive)
     minSamplesToLock: 2, // Lock after only 2 strong samples (immediate lock)
     

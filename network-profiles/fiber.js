@@ -8,9 +8,9 @@ const FIBER_PROFILE = {
     
     // Core Performance - optimized for modern fiber (100-500 Mbps)
     partSize: 100 * 1024 * 1024, // 100MB parts - optimized for 300+ Mbps sustained
-    parallel: 12, // Optimized parallel count for 300+ Mbps
-    maxCap: 18, // Higher cap for sustained high speeds
-    minParallel: 6, // Minimum parallel for stability
+    parallel: 16, // MAXIMUM aggressive for fiber speeds
+    maxCap: 22, // MAXIMUM cap - push fiber limits
+    minParallel: 12, // High minimum for sustained fiber performance
     targetSpeed: 400, // Target 300-600 Mbps range (FIBER tier)
     
     // Adaptive Ramp Logic
@@ -22,8 +22,8 @@ const FIBER_PROFILE = {
     staggerDelay: 50, // 25-50ms stagger delay for fiber
     
     warmupCount: 16, // Moderate warm-up
-    scaleUpCooldown: 10000, // 10s cooldown between scale-ups
-    scaleDownCooldown: 30000, // 30s cooldown for scale-downs
+    scaleUpCooldown: 1500, // 1.5s cooldown between scale-ups (AGGRESSIVE)
+    scaleDownCooldown: 8000, // 8s cooldown for scale-downs (minimal delays)
     lowSpeedSampleThreshold: 4, // Require 4 samples before scaling down
     
     // Degradation Recovery

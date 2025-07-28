@@ -2122,8 +2122,8 @@
                         this.upgradeTarget = upgradeTarget;
                         this.performanceHistory = [];
                         this.lastAdjustment = 0;
-                        this.adjustmentCooldown = 30000; // 30 seconds between adjustments (faster response)
-                        this.minSamplesForAdjustment = 6; // Need 6 samples before considering changes (faster)
+                        this.adjustmentCooldown = 15000; // 15 seconds between adjustments (AGGRESSIVE)
+                        this.minSamplesForAdjustment = 4; // Need 4 samples before considering changes (FAST)
                         this.stabilityThreshold = 0.8; // 80% of samples must agree for adjustment
                         this.enabled = true; // Safety switch
                     }
@@ -2177,7 +2177,7 @@
                         if (!this.upgradeTarget) return false;
                         
                         const currentTarget = this.currentProfile.targetSpeed || 50;
-                        const upgradeThreshold = currentTarget * 1.3; // 30% above current target (less strict)
+                        const upgradeThreshold = currentTarget * 1.2; // 20% above current target (AGGRESSIVE upgrades)
                         const confident = avgSpeed > upgradeThreshold;
                         
                         if (confident) {

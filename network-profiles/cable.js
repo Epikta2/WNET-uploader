@@ -6,8 +6,8 @@ const CABLE_PROFILE = {
     name: 'CABLE',
     tier: 'CABLE',
     partSize: 20 * 1024 * 1024, // 20MB parts - optimized for shared-bandwidth environments
-    parallel: 4, // Moderate parallel count for typical U.S. home cable
-    maxCap: 6, // Maximum parallel cap
+    parallel: 6, // AGGRESSIVE parallel count for CABLE speeds
+    maxCap: 10, // MAXIMUM cap - push cable limits
     targetSpeed: 75, // Target 8-75 Mbps range (CABLE tier)
     
     // Adaptive thresholds
@@ -26,7 +26,7 @@ const CABLE_PROFILE = {
     
     // Performance tuning
     degradationThreshold: 0.6, // 60% degradation threshold
-    throttleAmount: 2, // Moderate throttling
+    throttleAmount: 1, // MINIMAL throttling - push performance
     
     // Timing settings
     scaleUpCooldown: 8000, // 8s cooldown between scale-ups
