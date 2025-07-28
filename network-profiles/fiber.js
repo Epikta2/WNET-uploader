@@ -7,9 +7,9 @@ const FIBER_PROFILE = {
     tier: 'FIBER',
     
     // Core Performance - optimized for modern fiber (100-500 Mbps)
-    partSize: 75 * 1024 * 1024, // 75MB parts - optimized for better TCP efficiency
-    parallel: 8, // Moderate parallel count
-    maxCap: 16, // Maximum parallel cap
+    partSize: 100 * 1024 * 1024, // 100MB parts - optimized for 300+ Mbps sustained
+    parallel: 12, // Optimized parallel count for 300+ Mbps
+    maxCap: 18, // Higher cap for sustained high speeds
     minParallel: 6, // Minimum parallel for stability
     targetSpeed: 400, // Target 300-600 Mbps range (FIBER tier)
     

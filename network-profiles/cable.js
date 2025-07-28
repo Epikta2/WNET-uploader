@@ -8,7 +8,7 @@ const CABLE_PROFILE = {
     partSize: 20 * 1024 * 1024, // 20MB parts - optimized for shared-bandwidth environments
     parallel: 4, // Moderate parallel count for typical U.S. home cable
     maxCap: 6, // Maximum parallel cap
-    targetSpeed: 75, // Target 10-50 Mbps range
+    targetSpeed: 75, // Target 8-75 Mbps range (CABLE tier)
     
     // Adaptive thresholds
     rampUpThreshold: 2.0, // Balanced for 10-50 Mbps

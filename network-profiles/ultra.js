@@ -7,9 +7,9 @@ const ULTRA_PROFILE = {
     tier: 'ULTRA',
     
     // 🚀 Performance - Optimal balance: Fewer connections, larger parts, instant saturation
-    partSize: 150 * 1024 * 1024, // 150MB parts - PROVEN OPTIMAL for fastest saturation and best efficiency
-    parallel: 12, // OPTIMAL COUNT - proven to hit 138.6 Mbps before
-    maxCap: 16, // Small scaling headroom
+    partSize: 200 * 1024 * 1024, // 200MB parts - OPTIMIZED for sustained 140+ Mbps performance
+    parallel: 14, // OPTIMIZED COUNT - better for 140+ Mbps sustained
+    maxCap: 20, // More scaling headroom for peak performance
     minParallel: 10, // Reasonable minimum
     targetSpeed: 150, // Target 150 Mbps sustained (proven achievable)
     
@@ -20,7 +20,7 @@ const ULTRA_PROFILE = {
     
     // 🔄 Warm-up / cooldown (high-speed tuning)
     warmupCount: 20, // Optimal warm-up for 150MB parts
-    scaleUpCooldown: 1000, // 1s ramp interval (balanced for optimal parts)
+    scaleUpCooldown: 750, // 0.75s ramp interval (faster scaling for high speeds)
     scaleDownCooldown: 15000, // 15s freeze after lock (stable response)
     lowSpeedSampleThreshold: 3, // 3 samples needed (balanced response)
     rampStep: 4, // Increase by 4 parts per interval (optimal for 150MB parts)
@@ -48,7 +48,7 @@ const ULTRA_PROFILE = {
     // 🚀 ULTRA-specific staging configuration (IMMEDIATE FULL CAPACITY)
     stagingConfig: {
         immediateFullCapacity: true, // Skip all staging - launch at full capacity immediately
-        initialBatch: 12, // Launch optimal 12 parts immediately (PROVEN PERFORMANCE)
+        initialBatch: 14, // Launch optimal 14 parts immediately (OPTIMIZED PERFORMANCE)
         preflightParts: 0, // No preflight needed - trust ULTRA profile parameters
         preflightTimeoutMs: 0, // No timeout needed
         skipStaging: true, // Bypass all staging logic
@@ -68,7 +68,7 @@ function createUltraUploadStrategy(connectionInfo) {
     // ULTRA: Trust the profile and launch at full capacity immediately
     const strategy = {
         partSize: ULTRA_PROFILE.partSize,
-        maxParallel: ULTRA_PROFILE.parallel, // Start at 16 immediately
+        maxParallel: ULTRA_PROFILE.parallel, // Start at 14 immediately
         maxParallelCap: ULTRA_PROFILE.maxCap,
         profile: ULTRA_PROFILE,
         immediateFullCapacity: true, // Flag for staging logic to skip ramp-up
@@ -76,7 +76,7 @@ function createUltraUploadStrategy(connectionInfo) {
         launchAllPartsImmediately: true // Launch all parts at once
     };
     
-    console.log(`🚨 ULTRA PROVEN OPTIMAL: 150MB parts + ${ULTRA_PROFILE.parallel} parallel + IMMEDIATE 130+ Mbps performance`);
+    console.log(`🚨 ULTRA OPTIMIZED: 200MB parts + ${ULTRA_PROFILE.parallel} parallel + IMMEDIATE 140+ Mbps performance`);
     
     return strategy;
 }

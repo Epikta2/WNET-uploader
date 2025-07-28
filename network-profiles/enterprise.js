@@ -8,8 +8,8 @@ const ENTERPRISE_PROFILE = {
     
     // Core Performance - enterprise-grade (50-150 Mbps)
     partSize: 40 * 1024 * 1024, // 40MB parts - optimized for stable business-class connections
-    parallel: 6, // Moderate parallel count for consistent throughput
-    maxCap: 10, // Maximum parallel cap - aggressive scale-up
+    parallel: 8, // Optimized parallel count for better throughput
+    maxCap: 12, // Higher cap for peak performance
     minParallel: 4, // Minimum parallel for enterprise stability
     targetSpeed: 100, // Target 75-120 Mbps range (ENTERPRISE tier)
     
@@ -22,7 +22,7 @@ const ENTERPRISE_PROFILE = {
     staggerDelay: 75, // 50-75ms stagger delay for enterprise
     
     warmupCount: 20, // High warm-up for enterprise
-    scaleUpCooldown: 12000, // 12s cooldown between scale-ups
+    scaleUpCooldown: 8000, // 8s cooldown between scale-ups (faster scaling)
     scaleDownCooldown: 45000, // 45s cooldown for scale-downs (enterprise stability)
     lowSpeedSampleThreshold: 5, // Require 5 samples before scaling down
     
