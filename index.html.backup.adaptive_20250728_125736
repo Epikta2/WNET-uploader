@@ -1230,15 +1230,6 @@
                 const msg = `✅ Part ${partNum}: ${(timeMs/1000).toFixed(1)}s, ${speedMbps.toFixed(2)} Mbps, ${parallel} active`;
                 console.log(msg);
                 
-                // 🚀 ADAPTIVE: Record performance for profile management
-                if (window.adaptiveProfileActive && window.adaptiveProfileManager) {
-                    try {
-                        window.adaptiveProfileManager.recordPerformance(speedMbps, partNum, bytes);
-                    } catch (error) {
-                        console.warn('⚠️ ADAPTIVE: Failed to record performance:', error);
-                    }
-                }
-                
                 // Add to UI (show last 10 parts)
                 const elem = document.getElementById('perfParts');
                 if (elem) {
@@ -1404,100 +1395,6 @@
             });
             
             return speedMbps;
-        }
-
-        // 🚀 ADAPTIVE SYSTEM: Progressive detection with safety fallbacks
-        async function performProgressiveSpeedTest(testSize, streams = 1, stage = 'progressive') {
-            try {
-                if (streams === 1) {
-                    return await performSingleSpeedTest(testSize, 1, stage);
-                } else {
-                    // Simple parallel test - multiple simultaneous uploads
-                    const promises = [];
-                    for (let i = 0; i < streams; i++) {
-                        promises.push(performSingleSpeedTest(testSize / streams, 1, `${stage}-${i}`));
-                    }
-                    const results = await Promise.all(promises);
-                    return results.reduce((sum, result) => sum + result, 0); // Sum all speeds
-                }
-            } catch (error) {
-                console.warn(`⚠️ Progressive test failed (${stage}):`, error.message);
-                return null;
-            }
-        }
-
-        // 🎯 ADAPTIVE: Progressive connection detection with conservative fallbacks
-        async function detectConnectionQualityProgressive() {
-            try {
-                console.log('🔍 ADAPTIVE: Starting progressive connection detection...');
-                
-                let bestSpeed = 0;
-                let confidence = 'low';
-                const maxTestDuration = 8000; // 8 second timeout for all tests
-                const startTime = Date.now();
-                
-                // Stage 1: Conservative start - use existing logic as baseline
-                console.log('📡 Stage 1: Basic detection...');
-                const basicResult = await detectConnectionQuality();
-                bestSpeed = (basicResult.bandwidth || 2.5) * 8; // Convert to Mbps
-                confidence = 'basic';
-                
-                if (Date.now() - startTime > maxTestDuration) {
-                    console.log('⏰ Progressive detection timed out, using basic result');
-                    return { ...basicResult, progressive: false, confidence };
-                }
-                
-                // Stage 2: If looking promising, larger single test  
-                if (bestSpeed > 40 && Date.now() - startTime < maxTestDuration - 3000) {
-                    console.log('📡 Stage 2: Enhanced detection (2MB test)...');
-                    const stage2Speed = await performProgressiveSpeedTest(2 * 1024 * 1024, 1, 'stage2');
-                    if (stage2Speed && stage2Speed > bestSpeed) {
-                        bestSpeed = stage2Speed;
-                        confidence = 'enhanced';
-                        console.log(`✅ Stage 2: ${stage2Speed.toFixed(1)} Mbps detected`);
-                    }
-                }
-                
-                // Stage 3: If very promising, parallel test
-                if (bestSpeed > 80 && Date.now() - startTime < maxTestDuration - 2000) {
-                    console.log('📡 Stage 3: Parallel detection (5MB, 2 streams)...');
-                    const stage3Speed = await performProgressiveSpeedTest(5 * 1024 * 1024, 2, 'stage3');
-                    if (stage3Speed && stage3Speed > bestSpeed) {
-                        bestSpeed = stage3Speed;
-                        confidence = 'parallel';
-                        console.log(`✅ Stage 3: ${stage3Speed.toFixed(1)} Mbps detected`);
-                    }
-                }
-                
-                // Stage 4: If exceptional, full parallel test
-                if (bestSpeed > 120 && Date.now() - startTime < maxTestDuration - 1000) {
-                    console.log('📡 Stage 4: High-speed detection (10MB, 3 streams)...');
-                    const stage4Speed = await performProgressiveSpeedTest(10 * 1024 * 1024, 3, 'stage4');
-                    if (stage4Speed && stage4Speed > bestSpeed) {
-                        bestSpeed = stage4Speed;
-                        confidence = 'high-speed';
-                        console.log(`✅ Stage 4: ${stage4Speed.toFixed(1)} Mbps detected`);
-                    }
-                }
-                
-                // Build enhanced result with safety fallbacks
-                const enhancedResult = {
-                    ...basicResult,
-                    bandwidth: Math.max(bestSpeed / 8, basicResult.bandwidth || 2.5), // Convert back to MB/s
-                    actualBandwidthTest: bestSpeed,
-                    progressive: true,
-                    confidence: confidence,
-                    detectionTime: Date.now() - startTime
-                };
-                
-                console.log(`🎯 ADAPTIVE DETECTION: ${bestSpeed.toFixed(1)} Mbps (${confidence}) in ${enhancedResult.detectionTime}ms`);
-                return enhancedResult;
-                
-            } catch (error) {
-                console.warn('⚠️ Progressive detection failed, using basic fallback:', error);
-                const fallback = await detectConnectionQuality();
-                return { ...fallback, progressive: false, confidence: 'fallback' };
-            }
         }
 
         // Enhanced connection quality detection - considers both latency AND bandwidth
@@ -1801,18 +1698,8 @@
                 return;
             }
 
-            // 🚀 ADAPTIVE: Detect connection quality with progressive testing
-            console.log('📡 Starting adaptive connection quality detection...');
-            let connectionInfo;
-            try {
-                connectionInfo = await detectConnectionQualityProgressive();
-                console.log(`🎯 ADAPTIVE: Using ${connectionInfo.progressive ? 'progressive' : 'basic'} detection (${connectionInfo.confidence})`);
-            } catch (error) {
-                console.warn('⚠️ Progressive detection failed, using basic fallback:', error);
-                connectionInfo = await detectConnectionQuality();
-                connectionInfo.progressive = false;
-                connectionInfo.confidence = 'fallback';
-            }
+            // Detect connection quality before starting upload
+            const connectionInfo = await detectConnectionQuality();
             console.log(`Connection quality: ${connectionInfo.type}, Chunk size: ${currentChunkSize / (1024 * 1024)}MB`);
 
             // Generate a unique filename with timestamp
@@ -2009,37 +1896,11 @@
                 // 🔒 STEP 1: End any previous session and start fresh
                 uploadSessionManager.endSession();
                 
-                // 🚀 ADAPTIVE: Cleanup adaptive system
-                try {
-                    if (window.adaptiveProfileActive) {
-                        window.adaptiveProfileActive = false;
-                        window.adaptiveProfileManager = null;
-                        window.currentAdaptiveProfile = null;
-                        console.log('🧹 ADAPTIVE: System cleaned up');
-                    }
-                } catch (cleanupError) {
-                    console.warn('⚠️ ADAPTIVE: Cleanup failed:', cleanupError);
-                }
-                
-                // 🚀 ADAPTIVE: Progressive connection detection for multipart upload
-                console.log('📡 Multipart: Starting adaptive connection detection...');
+                // Detect connection quality (reuse logic from uploadFile)
                 let connectionInfo = { type: 'medium', latency: 200, bandwidth: 2 };
-                try {
-                    connectionInfo = await detectConnectionQualityProgressive();
-                    console.log(`🎯 ADAPTIVE: Multipart using ${connectionInfo.progressive ? 'progressive' : 'basic'} detection (${connectionInfo.confidence})`);
-                } catch (error) {
-                    console.warn('⚠️ Progressive detection failed for multipart, using basic fallback:', error);
-                    if (typeof detectConnectionQuality === 'function') {
-                        connectionInfo = await detectConnectionQuality();
-                    }
-                    connectionInfo.progressive = false;
-                    connectionInfo.confidence = 'fallback';
+                if (typeof detectConnectionQuality === 'function') {
+                    connectionInfo = await detectConnectionQuality();
                 }
-                
-                // 🚀 ADAPTIVE: Global flags for mid-upload adjustments
-                window.adaptiveProfileActive = true;
-                window.currentAdaptiveProfile = null;
-                window.adaptiveProfileChanged = false;
                 
                 // Optimized part size and parallelism based on connection type
                 let partSize;
@@ -2076,188 +1937,6 @@
                         return DSL_PROFILE; // Slow (16+ Mbps) - use DSL profile
                     } else {
                         return DSL_PROFILE; // Very Slow (<16 Mbps) - use DSL profile
-                    }
-                }
-
-                // 🎯 ADAPTIVE SYSTEM: Real-time profile management
-                class AdaptiveProfileManager {
-                    constructor(initialProfile, upgradeTarget = null) {
-                        this.currentProfile = initialProfile;
-                        this.upgradeTarget = upgradeTarget;
-                        this.performanceHistory = [];
-                        this.lastAdjustment = 0;
-                        this.adjustmentCooldown = 45000; // 45 seconds between adjustments (conservative)
-                        this.minSamplesForAdjustment = 8; // Need 8 samples before considering changes
-                        this.stabilityThreshold = 0.8; // 80% of samples must agree for adjustment
-                        this.enabled = true; // Safety switch
-                    }
-                    
-                    recordPerformance(speedMbps, partIndex, partSize) {
-                        if (!this.enabled) return;
-                        
-                        this.performanceHistory.push({ 
-                            speed: speedMbps, 
-                            part: partIndex, 
-                            time: Date.now(),
-                            partSize: partSize
-                        });
-                        
-                        // Keep only recent history (last 15 parts for stability)
-                        if (this.performanceHistory.length > 15) {
-                            this.performanceHistory.shift();
-                        }
-                        
-                        // Check for profile adjustment every 5 parts, but not too early
-                        if (partIndex > 10 && partIndex % 5 === 0) {
-                            this.evaluateProfileAdjustment();
-                        }
-                    }
-                    
-                    evaluateProfileAdjustment() {
-                        if (!this.enabled || Date.now() - this.lastAdjustment < this.adjustmentCooldown) return;
-                        if (this.performanceHistory.length < this.minSamplesForAdjustment) return;
-                        
-                        const recentSpeeds = this.performanceHistory.slice(-this.minSamplesForAdjustment);
-                        const avgSpeed = recentSpeeds.reduce((sum, p) => sum + p.speed, 0) / recentSpeeds.length;
-                        const stablePerformance = this.isPerformanceStable(recentSpeeds);
-                        
-                        if (!stablePerformance) {
-                            console.log('📊 ADAPTIVE: Performance not stable enough for profile change');
-                            return;
-                        }
-                        
-                        // UPGRADE LOGIC: Sustained performance well above current profile
-                        if (this.shouldUpgrade(avgSpeed)) {
-                            this.upgradeProfile(avgSpeed);
-                        }
-                        
-                        // DOWNGRADE LOGIC: Sustained performance well below current profile  
-                        else if (this.shouldDowngrade(avgSpeed)) {
-                            this.downgradeProfile(avgSpeed);
-                        }
-                    }
-                    
-                    shouldUpgrade(avgSpeed) {
-                        if (!this.upgradeTarget) return false;
-                        
-                        const currentTarget = this.currentProfile.targetSpeed || 50;
-                        const upgradeThreshold = currentTarget * 1.4; // 40% above current target (conservative)
-                        const confident = avgSpeed > upgradeThreshold;
-                        
-                        if (confident) {
-                            console.log(`📈 ADAPTIVE: Considering upgrade - ${avgSpeed.toFixed(1)} Mbps > ${upgradeThreshold.toFixed(1)} Mbps threshold`);
-                        }
-                        
-                        return confident;
-                    }
-                    
-                    shouldDowngrade(avgSpeed) {
-                        const currentTarget = this.currentProfile.targetSpeed || 50;
-                        const downgradeThreshold = currentTarget * 0.5; // 50% below target (very conservative)
-                        const struggling = avgSpeed < downgradeThreshold;
-                        
-                        if (struggling) {
-                            console.log(`📉 ADAPTIVE: Considering downgrade - ${avgSpeed.toFixed(1)} Mbps < ${downgradeThreshold.toFixed(1)} Mbps threshold`);
-                        }
-                        
-                        return struggling;
-                    }
-                    
-                    isPerformanceStable(recentSpeeds) {
-                        if (recentSpeeds.length < 5) return false;
-                        
-                        const speeds = recentSpeeds.map(p => p.speed);
-                        const avg = speeds.reduce((a, b) => a + b) / speeds.length;
-                        const variance = speeds.reduce((sum, speed) => sum + Math.pow(speed - avg, 2), 0) / speeds.length;
-                        const stdDev = Math.sqrt(variance);
-                        const coefficientOfVariation = stdDev / avg;
-                        
-                        // Performance is stable if coefficient of variation < 0.3 (conservative)
-                        return coefficientOfVariation < 0.3;
-                    }
-                    
-                    upgradeProfile(avgSpeed) {
-                        if (!this.upgradeTarget) return;
-                        
-                        console.log(`🚀 ADAPTIVE UPGRADE: ${this.currentProfile.name || 'Current'} → ${this.upgradeTarget.name || 'Higher'} (${avgSpeed.toFixed(1)} Mbps sustained)`);
-                        
-                        this.currentProfile = this.upgradeTarget;
-                        this.upgradeTarget = this.getNextUpgradeTarget();
-                        this.lastAdjustment = Date.now();
-                        
-                        // Apply new profile settings safely
-                        this.applyProfileSettings();
-                    }
-                    
-                    downgradeProfile(avgSpeed) {
-                        const downgradeTo = this.getPreviousProfile();
-                        if (!downgradeTo) return;
-                        
-                        console.log(`📉 ADAPTIVE DOWNGRADE: ${this.currentProfile.name || 'Current'} → ${downgradeTo.name || 'Lower'} (${avgSpeed.toFixed(1)} Mbps - reducing load)`);
-                        
-                        this.upgradeTarget = this.currentProfile; // Current becomes upgrade target
-                        this.currentProfile = downgradeTo;
-                        this.lastAdjustment = Date.now();
-                        
-                        // Apply new profile settings safely
-                        this.applyProfileSettings();
-                    }
-                    
-                    getNextUpgradeTarget() {
-                        // Conservative upgrade path mapping
-                        if (!this.currentProfile.name) return null;
-                        
-                        const upgradeMap = {
-                            'DSL': CABLE_PROFILE,
-                            'CABLE': ENTERPRISE_PROFILE, 
-                            'ENTERPRISE': ULTRA_PROFILE,
-                            'ULTRA': FIBER_PROFILE,
-                            'FIBER': GIGABIT_PROFILE,
-                            'GIGABIT': null
-                        };
-                        
-                        return upgradeMap[this.currentProfile.name] || null;
-                    }
-                    
-                    getPreviousProfile() {
-                        // Conservative downgrade path mapping
-                        if (!this.currentProfile.name) return null;
-                        
-                        const downgradeMap = {
-                            'GIGABIT': FIBER_PROFILE,
-                            'FIBER': ULTRA_PROFILE,
-                            'ULTRA': ENTERPRISE_PROFILE,
-                            'ENTERPRISE': CABLE_PROFILE,
-                            'CABLE': DSL_PROFILE,
-                            'DSL': null
-                        };
-                        
-                        return downgradeMap[this.currentProfile.name] || null;
-                    }
-                    
-                    applyProfileSettings() {
-                        // This will be called when profiles change - integrate with existing upload logic
-                        console.log(`🔧 ADAPTIVE: Applying ${this.currentProfile.name || 'profile'} settings - ${(this.currentProfile.partSize/1024/1024).toFixed(0)}MB parts, ${this.currentProfile.parallel || this.currentProfile.maxParallel} parallel`);
-                        
-                        // Update global variables (existing system will pick these up)
-                        if (window.adaptiveProfileActive) {
-                            window.currentAdaptiveProfile = this.currentProfile;
-                            window.adaptiveProfileChanged = true;
-                        }
-                    }
-                    
-                    disable() {
-                        this.enabled = false;
-                        console.log('⚠️ ADAPTIVE: Profile management disabled for safety');
-                    }
-                    
-                    getStatus() {
-                        return {
-                            current: this.currentProfile.name || 'Unknown',
-                            samples: this.performanceHistory.length,
-                            lastAdjustment: this.lastAdjustment,
-                            enabled: this.enabled
-                        };
                     }
                 }
 
@@ -2348,33 +2027,6 @@
                 console.log(`🎯 ${profile.tier} PROFILE: ${(connectionInfo.bandwidth * 8).toFixed(1)} Mbps → ${(partSize/1024/1024).toFixed(0)}MB parts, ${maxParallel} parallel (cap: ${maxParallelCap})`);
                 
                 console.log(`🚀 UNIVERSAL OPTIMIZATION: ${connectionInfo.type} → ${partSize / (1024*1024)}MB parts, ${maxParallel} parallel (${profile.tier} tier)`);
-                
-                // 🚀 ADAPTIVE: Helper function to get next upgrade profile
-                function getNextUpgradeProfile(currentProfile) {
-                    const profileName = currentProfile.name || currentProfile.tier;
-                    const upgradeMap = {
-                        'DSL': typeof CABLE_PROFILE !== 'undefined' ? CABLE_PROFILE : null,
-                        'CABLE': typeof ENTERPRISE_PROFILE !== 'undefined' ? ENTERPRISE_PROFILE : null,
-                        'ENTERPRISE': typeof ULTRA_PROFILE !== 'undefined' ? ULTRA_PROFILE : null,
-                        'ULTRA': typeof FIBER_PROFILE !== 'undefined' ? FIBER_PROFILE : null,
-                        'FIBER': typeof GIGABIT_PROFILE !== 'undefined' ? GIGABIT_PROFILE : null,
-                        'GIGABIT': null
-                    };
-                    return upgradeMap[profileName] || null;
-                }
-                
-                // 🚀 ADAPTIVE: Initialize adaptive profile manager
-                let adaptiveProfileManager = null;
-                try {
-                    // Determine upgrade target for current profile
-                    const upgradeTarget = getNextUpgradeProfile(profile);
-                    adaptiveProfileManager = new AdaptiveProfileManager(profile, upgradeTarget);
-                    window.currentAdaptiveProfile = profile;
-                    window.adaptiveProfileManager = adaptiveProfileManager; // Global reference for performance tracker
-                    console.log(`🎯 ADAPTIVE: Profile manager initialized - ${profile.name || profile.tier} profile with ${upgradeTarget ? upgradeTarget.name || upgradeTarget.tier : 'no'} upgrade target`);
-                } catch (error) {
-                    console.warn('⚠️ ADAPTIVE: Failed to initialize profile manager, continuing without adaptation:', error);
-                }
                 
                 // Show performance panel and log initial info
                 performanceTracker.reset();
@@ -3238,17 +2890,8 @@
                 let lastBytes = 0;
                 let speeds = [];
                 
-                // 🚀 ADAPTIVE: Speed optimization with progressive detection
-                let connectionInfo;
-                try {
-                    connectionInfo = await detectConnectionQualityProgressive();
-                    console.log(`🎯 ADAPTIVE: Download using ${connectionInfo.progressive ? 'progressive' : 'basic'} detection (${connectionInfo.confidence})`);
-                } catch (error) {
-                    console.warn('⚠️ Progressive detection failed for download, using basic fallback:', error);
-                    connectionInfo = await detectConnectionQuality();
-                    connectionInfo.progressive = false;
-                    connectionInfo.confidence = 'fallback';
-                }
+                // 🚀 SPEED OPTIMIZATION: Dynamic parallel downloads based on connection speed
+                const connectionInfo = await detectConnectionQuality();
                 let CHUNK_SIZE, MAX_PARALLEL;
                 
                 // 🎯 DYNAMIC PARALLELISM: Based on actual connection speed (File System Access API optimized)

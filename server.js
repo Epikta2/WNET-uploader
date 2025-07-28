@@ -11,16 +11,26 @@ const throttle = require('express-throttle-bandwidth');
 
 const app = express();
 
-// Rate limiting for API endpoints
+// Disable proxy trust to avoid rate limiter warnings (rate limiting not critical for this app)
+// app.set('trust proxy', 1); 
+
+// Rate limiting for API endpoints (with skip validation for proxy warnings)
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 200 // limit each IP to 200 requests per windowMs
+    max: 200, // limit each IP to 200 requests per windowMs
+    skip: (req, res) => false, // Don't skip any requests
+    standardHeaders: true,
+    legacyHeaders: false,
+    validate: false // Skip proxy validation to avoid warnings
 });
 
 // Higher limit for multipart upload endpoints (apply BEFORE general limiter)
 const multipartLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 5000 // allow up to 5000 requests per 15 minutes
+    max: 5000, // allow up to 5000 requests per 15 minutes
+    standardHeaders: true,
+    legacyHeaders: false,
+    validate: false // Skip proxy validation to avoid warnings
 });
 
 // Apply multipart limiter first (before general API limiter)
